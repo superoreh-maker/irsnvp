@@ -222,18 +222,17 @@
         // Tvoja specifična povezava do objavljenega CSV
         const googleSheetsCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQGHIoNVspAhEHLg6i8jt7iXdY1dxiEOWkU1VMiUkkWAlOf42eTGR0KQmKDv16XG8nNOMNyrw_VkHwU/pub?gid=929707322&single=true&output=csv";
 
-        function naloziMojeTocke() {
+function naloziMojeTocke() {
             mojeTockeLayer.clearLayers(); 
 
             Papa.parse(googleSheetsCsvUrl, {
                 download: true,
-                header: true, // Uporabi prvo vrstico kot ključe
-                skipEmptyLines: true, // Nujno, da ignorira prazne vrstice na koncu tabele
+                header: true, 
+                skipEmptyLines: true, 
                 complete: function(results) {
                     results.data.forEach(row => {
                         const koordinateStr = row['Koordinate Google maps'];
                         
-                        // Preverimo, da polje s koordinatami ni prazno in vsebuje vejico
                         if (koordinateStr && koordinateStr.includes(',')) {
                             const parts = koordinateStr.split(',');
                             const lat = parseFloat(parts[0].trim()); 
@@ -241,13 +240,20 @@
                             
                             if (!isNaN(lat) && !isNaN(lng)) {
                                 
-                                // Branje podatkov iz tvojih stolpcev z varovalko (fallback)
-                                const naziv = row['Naziv'] || 'Neznan naziv';
+                                // Branje VSEH podatkov iz stolpcev
                                 const postopek = row['Postopek'] || 'Brez postopka';
-                                const investitor = row['Investitorji'] || 'Ni podatka';
+                                const naziv = row['Naziv'] || 'Neznan naziv';
+                                const idUa = row['ID UA'] || '-';
+                                const upravniOrgan = row['Upravni organ'] || '-';
+                                const obcina = row['Občina'] || '-';
+                                const investitor = row['Investitorji'] || '-';
                                 const stZadeve = row['Št. zadeve'] || '-';
-                                const datumIzdaje = row['Datum izd.'] || '-';
+                                const datumIzd = row['Datum izd.'] || '-';
+                                const datPrav = row['Dat. prav.'] || '-';
+                                const zacetekGradnje = row['Datum prij. zač. grad.'] || '-';
                                 const status = row['Način rešitve'] || '-';
+                                const imeKo = row['Ime KO'] || '-';
+                                const sifraKo = row['Šifra KO'] || '-';
                                 const parcelaInfo = row['KO + parcela'] || '-';
                                 
                                 // Gumbi za zunanje povezave
@@ -263,17 +269,22 @@
                                 // Ustvarimo marker
                                 const marker = L.marker([lat, lng]);
                                 
-                                // Sestavimo okno z informacijami (Popup)
+                                // Sestavimo okno z vsemi informacijami (Popup)
                                 const popupVsebina = `
-                                    <div style="min-width: 260px; font-family: 'Segoe UI', sans-serif;">
-                                        <div style="font-size: 10px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px;">${postopek}</div>
-                                        <h4 style="margin:2px 0 8px 0; color:#2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">${naziv}</h4>
+                                    <div style="min-width: 290px; font-family: 'Segoe UI', sans-serif;">
+                                        <div style="font-size: 10px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px;">${postopek} | ID: ${idUa}</div>
+                                        <h4 style="margin:2px 0 8px 0; color:#2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; font-size: 13px;">${naziv}</h4>
                                         
-                                        <table style="width: 100%; font-size: 12px; border-collapse: collapse; margin-bottom: 10px;">
-                                            <tr><td style="padding: 2px 0; color: #7f8c8d; width: 80px;">Investitor:</td><td style="font-weight: 500;">${investitor}</td></tr>
+                                        <table style="width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 10px;">
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d; width: 100px;">Upravni organ:</td><td style="font-weight: 500;">${upravniOrgan}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Občina:</td><td style="font-weight: 500;">${obcina}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Investitor:</td><td style="font-weight: 500;">${investitor}</td></tr>
                                             <tr><td style="padding: 2px 0; color: #7f8c8d;">Št. zadeve:</td><td style="font-weight: 500;">${stZadeve}</td></tr>
-                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Izdano:</td><td style="font-weight: 500;">${datumIzdaje}</td></tr>
-                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Status:</td><td style="font-weight: 500;">${status}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Datum izdaje:</td><td style="font-weight: 500;">${datumIzd}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Pravnomočnost:</td><td style="font-weight: 500;">${datPrav}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Začetek gradnje:</td><td style="font-weight: 500;">${zacetekGradnje}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Način rešitve:</td><td style="font-weight: 500;">${status}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Katastrska občina:</td><td style="font-weight: 500;">${imeKo} (${sifraKo})</td></tr>
                                             <tr><td style="padding: 2px 0; color: #7f8c8d;">Parcela:</td><td style="font-weight: 500;">${parcelaInfo}</td></tr>
                                         </table>
                                         
@@ -297,7 +308,6 @@
                 },
                 error: function(error) {
                     console.error("Napaka pri branju Google Sheets CSV:", error);
-                    alert("Ne morem naložiti točk iz Google Sheets. Preveri konzolo za napake.");
                 }
             });
         }
@@ -316,4 +326,5 @@
     </script>
 </body>
 </html>
+
 
