@@ -16,36 +16,17 @@
             background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
             width: 320px; transition: all 0.3s ease; overflow: hidden;
         }
-        
-        /* Skrit meni - samo gumb za odpiranje */
         .main-menu.collapsed { width: 45px; height: 45px; border-radius: 50%; }
         .main-menu.collapsed .menu-content { display: none; }
 
-        /* Glava menija z gumbom za krčenje */
-        .menu-header {
-            display: flex; align-items: center; padding: 5px 10px;
-            background: #f8f9fa; border-bottom: 1px solid #eee;
-        }
-        #toggle-menu-btn {
-            background: none; border: none; font-size: 20px; cursor: pointer;
-            padding: 5px; line-height: 1; color: #2c3e50;
-        }
-
-        /* Vsebina menija */
+        .menu-header { display: flex; align-items: center; padding: 5px 10px; background: #f8f9fa; border-bottom: 1px solid #eee; }
+        #toggle-menu-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 5px; color: #2c3e50; }
         .menu-content { padding: 15px; }
 
-        /* Iskalnik znotraj menija */
         .search-row { display: flex; margin-bottom: 15px; gap: 5px; }
-        #search-input { 
-            flex: 1; border: 1px solid #ddd; padding: 8px 12px; 
-            border-radius: 6px; outline: none; font-size: 14px;
-        }
-        #search-btn { 
-            background: #2c3e50; color: white; border: none; 
-            padding: 0 12px; border-radius: 6px; cursor: pointer; 
-        }
+        #search-input { flex: 1; border: 1px solid #ddd; padding: 8px 12px; border-radius: 6px; outline: none; font-size: 14px; }
+        #search-btn { background: #2c3e50; color: white; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; }
 
-        /* Stikala */
         .controls-section h4 { margin: 10px 0 8px 0; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
         .row { display: flex; align-items: center; margin-bottom: 12px; font-size: 14px; cursor: pointer; color: #333; }
         .row input { margin-right: 12px; width: 20px; height: 20px; cursor: pointer; }
@@ -57,24 +38,20 @@
             text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000;
         }
 
-        /* Info Okno */
+        /* INFO OKNO (Zmanjšano za parcele) */
         #info-okno {
             position: absolute; bottom: -600px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 480px; background: white; border-radius: 12px 12px 0 0;
-            box-shadow: 0px -4px 20px rgba(0,0,0,0.5); z-index: 2000; padding: 20px;
+            width: 90%; max-width: 400px; background: white; border-radius: 12px 12px 0 0;
+            box-shadow: 0px -4px 20px rgba(0,0,0,0.5); z-index: 2000; padding: 15px;
             transition: bottom 0.3s ease-in-out; border-top: 5px solid #e67e22;
         }
+        #info-naslov { margin: 0 0 10px 0; font-size: 16px; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .mini-podatek { margin: 5px 0; font-size: 13px; line-height: 1.4; }
+        .mini-label { color: #888; font-weight: normal; font-size: 11px; text-transform: uppercase; display: block; }
 
         .oranzen-krogec-hiska {
             background: #e67e22; color: white; border-radius: 50%; width: 32px; height: 32px;
             display: flex; justify-content: center; align-items: center; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }
-
-        /* POVEČANA IMENA ULIC (CSS filter za večjo opaznost) */
-        .street-labels-layer {
-            filter: contrast(120%) brightness(110%);
-            transform: scale(1.5); /* Vizualna simulacija povečave preko transformacij ni priporočljiva za tiles, 
-                                      zato bomo uporabili zoom offset v JS */
         }
     </style>
 </head>
@@ -85,18 +62,15 @@
             <button id="toggle-menu-btn" onclick="toggleMenu()">☰</button>
             <span style="margin-left: 10px; font-weight: bold; font-size: 14px; color: #2c3e50;" id="menu-title">Nastavitve & Iskanje</span>
         </div>
-        
         <div class="menu-content">
             <div class="search-row">
                 <input type="text" id="search-input" placeholder="Naslov ali kraj...">
                 <button id="search-btn" onclick="isciNaslov()">🔍</button>
             </div>
-
             <div class="controls-section">
                 <h4>Sloji</h4>
                 <label class="row"><input type="checkbox" id="check-labels" checked onchange="toggleLabels()"> 🛣️ Imena ulic (Večja)</label>
                 <label class="row"><input type="checkbox" id="check-parcele" checked onchange="naloziParcele()"> 📐 Zemljiške parcele</label>
-                
                 <h4>Orodja</h4>
                 <label class="row"><input type="checkbox" id="check-podatki" checked onchange="togglePodatki()"> 🏠 Moji podatki (CSV)</label>
                 <label class="row"><input type="checkbox" id="check-lokacija" onchange="toggleGeolokacija()"> 📍 Moja lokacija</label>
@@ -107,30 +81,20 @@
     <div id="map"></div>
 
     <div id="info-okno">
-        <span style="float:right; cursor:pointer; font-weight:bold; color:#e74c3c;" onclick="zapriInfoOkno()">[ZAPRI X]</span>
+        <span style="float:right; cursor:pointer; font-weight:bold; color:#e74c3c;" onclick="zapriInfoOkno()">[X]</span>
         <h3 id="info-naslov">Naslov</h3>
-        <div id="info-vsebina">Vsebina...</div>
+        <div id="info-vsebina">Nalagam podatke...</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 
     <script>
-        // PODLAGE
-        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { 
-            maxZoom: 20, 
-            attribution: 'Esri' 
-        });
-
-        // POVEČANA IMENA ULIC: Uporabimo zoomOffset in tileSize za faktor 1.5x
-        // Opomba: Ker tile serverji niso narejeni za poljubne faktorje, je najboljša aproksimacija 
-        // uporaba večjih ploščic (tiles) na nižjem zoomu.
+        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 });
+        
+        // POVEČANA IMENA ULIC (zoomOffset)
         const streetLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', { 
-            zIndex: 1000, 
-            attribution: 'CartoDB',
-            zoomOffset: -1, // To bo "povečalo" napise, ker bo vzelo napise prejšnjega zooma
-            tileSize: 512,  // Podvojena velikost ploščic vizualno poveča vsebino
-            opacity: 1
+            zIndex: 1000, zoomOffset: -1, tileSize: 512, opacity: 1
         });
 
         const map = L.map('map', { zoomControl: false }).setView([46.1, 14.8], 9);
@@ -142,22 +106,80 @@
         let userMarker = null;
         let wfsTimeout = null;
 
-        // MENI FUNKCIJE
         function toggleMenu() {
             const menu = document.getElementById('main-menu');
-            const title = document.getElementById('menu-title');
             menu.classList.toggle('collapsed');
-            title.style.display = menu.classList.contains('collapsed') ? 'none' : 'inline';
+            document.getElementById('menu-title').style.display = menu.classList.contains('collapsed') ? 'none' : 'inline';
         }
 
-        // ISKANJE Z ENTER
-        document.getElementById('search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') isciNaslov(); });
+        function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
 
-        function toggleLabels() {
-            document.getElementById('check-labels').checked ? streetLabels.addTo(map) : map.removeLayer(streetLabels);
+        // --- DINAMIČNO PRIDOBIVANJE PODATKOV O PARCELI ---
+        async function prikaziPodatkeParcele(latlng, stParcele) {
+            zapriInfoOkno();
+            document.getElementById("info-naslov").innerText = "Parcela št. " + stParcele;
+            document.getElementById("info-vsebina").innerHTML = "Iščem uradne podatke... ⏳";
+            document.getElementById("info-okno").style.bottom = "0";
+
+            // Uporabimo majhen bbox okoli klika za poizvedbo v register enot
+            const d = 0.0001;
+            const bbox = `${latlng.lng-d},${latlng.lat-d},${latlng.lng+d},${latlng.lat+d},EPSG:4326`;
+            const baseUrl = "https://ipi.eprostor.gov.si/wfs-si-gurs-rpe/wfs?service=WFS&version=1.0.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=" + bbox;
+
+            try {
+                // Vzporedno kličemo tri registre
+                const [resKO, resObcina, resUE] = await Promise.all([
+                    fetch(baseUrl + "&typeName=KATASTRSKE_OBCINE"),
+                    fetch(baseUrl + "&typeName=OBCINE"),
+                    fetch(baseUrl + "&typeName=UPRAVNE_ENOTE")
+                ]);
+
+                const [dataKO, dataObcina, dataUE] = await Promise.all([resKO.json(), resObcina.json(), resUE.json()]);
+
+                const koIme = dataKO.features?.[0]?.properties?.UIME || "Ni najdeno";
+                const obIme = dataObcina.features?.[0]?.properties?.UIME || "Ni najdeno";
+                const ueIme = dataUE.features?.[0]?.properties?.UIME || "Ni najdeno";
+
+                document.getElementById("info-vsebina").innerHTML = `
+                    <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><b>${koIme}</b></div>
+                    <div class="mini-podatek"><span class="mini-label">Občina</span><b>${obIme}</b></div>
+                    <div class="mini-podatek"><span class="mini-label">Upravna enota</span><b>${ueIme}</b></div>
+                `;
+            } catch (err) {
+                document.getElementById("info-vsebina").innerHTML = "Napaka pri branju GURS registra.";
+            }
         }
 
-        // CSV PODATKI
+        // --- IZRIS PARCEL ---
+        function naloziParcele() {
+            if (!document.getElementById('check-parcele').checked || map.getZoom() < 19) { 
+                parceleLayer.clearLayers(); return; 
+            }
+            const b = map.getBounds();
+            const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
+
+            fetch(url).then(r => r.json()).then(data => {
+                parceleLayer.clearLayers();
+                L.geoJSON(data, {
+                    style: { color: "white", weight: 1.5, fill: true, fillOpacity: 0 },
+                    onEachFeature: (f, l) => {
+                        const st = f.properties.ST_PARCELE || f.properties.st_parcele;
+                        if (st) {
+                            l.bindTooltip(String(st), { permanent: true, direction: 'center', className: 'parcel-tooltip' });
+                            // Ob kliku na parcelo sprožimo iskanje KO, Občine in UE
+                            l.on('click', (e) => {
+                                L.DomEvent.stopPropagation(e); // Prepreči klik na spodnje sloje
+                                prikaziPodatkeParcele(e.latlng, st);
+                            });
+                        }
+                    }
+                }).addTo(parceleLayer);
+            });
+        }
+
+        map.on('moveend', () => { clearTimeout(wfsTimeout); wfsTimeout = setTimeout(naloziParcele, 400); });
+
+        // --- OSTALO (CSV, ISKANJE, LOKACIJA) ---
         function naloziPodatke() {
             Papa.parse('podatki.csv', {
                 download: true, header: true, skipEmptyLines: true,
@@ -169,50 +191,26 @@
                         const coords = v[kKey].split(',').map(n => parseFloat(n.trim()));
                         const icon = L.divIcon({ className: '', html: '<div class="oranzen-krogec-hiska">🏠</div>', iconSize: [32, 32] });
                         const m = L.marker([coords[0], coords[1]], {icon: icon});
-                        let info = "";
-                        for (let k in v) if (v[k] && k !== kKey) info += `<p><b>${k}:</b> ${v[k]}</p>`;
-                        m.on('click', () => {
-                            document.getElementById("info-naslov").innerText = v['Naziv'] || "Podatki";
-                            document.getElementById("info-vsebina").innerHTML = info;
-                            document.getElementById("info-okno").style.bottom = "0";
-                            if (window.innerWidth < 600) toggleMenu(); // Skrij meni na mobilcih ob kliku
+                        m.on('click', (e) => {
+                            L.DomEvent.stopPropagation(e);
+                            let info = "";
+                            for (let k in v) if (v[k] && k !== kKey) info += `<div class="mini-podatek"><span class="mini-label">${k}</span><b>${v[k]}</b></div>`;
+                            prikaziInfoZasebno(v['Naziv'] || "Moja lokacija", info);
                         });
                         markerGroup.addLayer(m);
                     });
                 }
             });
         }
-        naloziPodatke();
-        
-        function togglePodatki() { document.getElementById('check-podatki').checked ? map.addLayer(markerGroup) : map.removeLayer(markerGroup); }
-
-        // PARCELE (Zoom 19+)
-        function naloziParcele() {
-            if (!document.getElementById('check-parcele').checked || map.getZoom() < 19) { 
-                parceleLayer.clearLayers(); 
-                return; 
-            }
-            const b = map.getBounds();
-            const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
-
-            fetch(url).then(r => r.json()).then(data => {
-                parceleLayer.clearLayers();
-                L.geoJSON(data, {
-                    style: { color: "white", weight: 1.5, fill: false },
-                    onEachFeature: (f, l) => {
-                        const st = f.properties.ST_PARCELE || f.properties.st_parcele;
-                        if (st) l.bindTooltip(String(st), { permanent: true, direction: 'center', className: 'parcel-tooltip' });
-                    }
-                }).addTo(parceleLayer);
-            });
+        function prikaziInfoZasebno(naslov, vsebina) {
+            document.getElementById("info-naslov").innerText = naslov;
+            document.getElementById("info-vsebina").innerHTML = vsebina;
+            document.getElementById("info-okno").style.bottom = "0";
         }
+        naloziPodatke();
 
-        map.on('moveend', () => {
-            clearTimeout(wfsTimeout);
-            wfsTimeout = setTimeout(naloziParcele, 400);
-        });
-
-        // GEOLOKACIJA
+        function toggleLabels() { document.getElementById('check-labels').checked ? streetLabels.addTo(map) : map.removeLayer(streetLabels); }
+        function togglePodatki() { document.getElementById('check-podatki').checked ? map.addLayer(markerGroup) : map.removeLayer(markerGroup); }
         function toggleGeolokacija() {
             if (document.getElementById('check-lokacija').checked) {
                 navigator.geolocation.getCurrentPosition(p => {
@@ -220,26 +218,17 @@
                     if (userMarker) userMarker.setLatLng(pos);
                     else userMarker = L.circleMarker(pos, {radius: 9, color: 'white', fillColor: '#3498db', fillOpacity: 1, weight: 3}).addTo(map);
                     map.setView(pos, 19);
-                    if (window.innerWidth < 600) toggleMenu();
-                }, err => { alert("Lokacija ni na voljo."); document.getElementById('check-lokacija').checked = false; }, {enableHighAccuracy: true});
+                }, null, {enableHighAccuracy: true});
             } else if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
         }
-
-        // ISKALNIK
         async function isciNaslov() {
             const q = document.getElementById('search-input').value.trim();
             if (!q) return;
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=si`);
-                const data = await res.json();
-                if (data.length > 0) {
-                    map.setView([data[0].lat, data[0].lon], 19);
-                    if (window.innerWidth < 600) toggleMenu();
-                } else alert("Ni zadetkov.");
-            } catch (err) { alert("Napaka pri iskanju."); }
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=si`);
+            const data = await res.json();
+            if (data.length > 0) map.setView([data[0].lat, data[0].lon], 19);
         }
-
-        function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
+        document.getElementById('search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') isciNaslov(); });
     </script>
 </body>
 </html>
