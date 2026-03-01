@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GURS GIS Pregledovalnik v4</title>
+    <title>GURS GIS Pregledovalnik v4 - Optimiziran</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #000; }
@@ -28,11 +28,12 @@
         .row { display: flex; align-items: center; margin-bottom: 10px; font-size: 13px; cursor: pointer; }
         .row input { margin-right: 10px; width: 18px; height: 18px; }
 
-        /* Stil za številke parcel */
+        /* Stil za številke parcel - dodan pointer-events: none za gladko delovanje (brez UI lag-a) */
         .parcel-tooltip {
             background: transparent !important; border: none !important; box-shadow: none !important;
             color: white !important; font-size: 12px; font-weight: 900;
             text-shadow: -1.2px -1.2px 0 #000, 1.2px -1.2px 0 #000, -1.2px 1.2px 0 #000, 1.2px 1.2px 0 #000;
+            pointer-events: none !important; 
         }
 
         /* Info Okno */
@@ -59,7 +60,7 @@
                 <input type="text" id="search-input" placeholder="Vpiši naslov...">
                 <button id="search-btn" onclick="isciNaslov()">🔍</button>
             </div>
-            <label class="row"><input type="checkbox" id="check-parcele" checked onchange="osveziSloje()"> 📐 Zemljiške parcele</label>
+            <label class="row"><input type="checkbox" id="check-parcele" checked onchange="naloziParcele()"> 📐 Zemljiške parcele</label>
             <label class="row"><input type="checkbox" id="check-labels" checked onchange="toggleLabels()"> 🛣️ Imena ulic (Večja)</label>
             <label class="row"><input type="checkbox" id="check-lokacija" onchange="toggleGeolokacija()"> 📍 Moja lokacija</label>
         </div>
@@ -78,12 +79,17 @@
         const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 });
         const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', { zIndex: 1000, zoomOffset: -1, tileSize: 512 });
 
-        const map = L.map('map', { zoomControl: false }).setView([46.05, 14.5], 13);
+        // Uporabimo preferCanvas za hitrejše risanje ogromnega števila parcel
+        const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([46.05, 14.5], 13);
         satellite.addTo(map);
         labels.addTo(map);
 
         let parceleLayer = L.layerGroup().addTo(map);
         let userMarker = null;
+        
+        // Spremenljivke za optimizacijo klicev
+        let mapMoveTimeout = null;
+        let fetchAbortController = null;
 
         function toggleMenu() { document.getElementById('main-menu').classList.toggle('collapsed'); }
         function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
@@ -91,7 +97,7 @@
 
         // --- NAJBOLJŠA VARIANTA ZA PRIDOBIVANJE PODATKOV ---
         async function fetchGursData(latlng, stParcele) {
-            document.getElementById("info-naslov").innerText = "Parcela " + stParcele;
+            document.getElementById("info-naslov").innerText = "... " + stParcele; 
             document.getElementById("info-vsebina").innerHTML = "Povezujem se z državnimi registri... ⏳";
             document.getElementById("info-okno").style.bottom = "0";
 
@@ -109,57 +115,86 @@
                     fetch(rpeBase + "&typeName=SI.GURS.RPE:UPRAVNE_ENOTE").then(r => r.json())
                 ]);
 
-                // Funkcija, ki inteligentno preišče vse možne nazive polj v vrnjenem JSON-u
+                // Funkcija za pridobivanje IMENA
                 const extractName = (settledRes) => {
                     if (settledRes.status === "fulfilled" && settledRes.value.features?.length > 0) {
                         const props = settledRes.value.features[0].properties;
-                        // Preišči prioriteto polj: UIME (uradno ime), IME, NAZIV, ali karkoli vsebuje 'IME'
                         return props.UIME || props.IME || props.NAZIV || props.NAZIV_KO || 
                                Object.values(props).find(v => typeof v === 'string' && v.length > 2) || "Ni najdeno";
                     }
-                    return "Strežnik neodziven";
+                    return "Ni najdeno";
                 };
 
-                const ko = extractName(resKO);
+                // Funkcija za pridobivanje ŠIFRE (številke)
+                const extractCode = (settledRes) => {
+                    if (settledRes.status === "fulfilled" && settledRes.value.features?.length > 0) {
+                        const props = settledRes.value.features[0].properties;
+                        return props.SIFRA || props.KO_SIFRA || props.sifra || props.KO_ID || "----";
+                    }
+                    return "----";
+                };
+
+                const koIme = extractName(resKO);
+                const koSifra = extractCode(resKO);
                 const obcina = extractName(resObc);
                 const ue = extractName(resUE);
 
+                // Nastavimo naslov na: Številka KO + Številka parcele (npr. 1739 2207/6)
+                document.getElementById("info-naslov").innerText = koSifra + " " + stParcele;
+
                 document.getElementById("info-vsebina").innerHTML = `
-                    <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${ko}</span></div>
+                    <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${koIme}</span></div>
                     <div class="mini-podatek"><span class="mini-label">Občina</span><span class="mini-val">${obcina}</span></div>
                     <div class="mini-podatek"><span class="mini-label">Upravna enota</span><span class="mini-val">${ue}</span></div>
                     <div style="margin-top:10px; font-size:10px; color:#ccc; text-align:center;">Vir podatkov: GURS e-prostor</div>
                 `;
             } catch (err) {
                 document.getElementById("info-vsebina").innerHTML = "Težava pri komunikaciji z GURS strežnikom.";
+                document.getElementById("info-naslov").innerText = "Napaka " + stParcele;
             }
         }
 
-        // --- IZRIS PARCEL ---
+        // --- IZRIS PARCEL Z OPTIMIZACIJAMI (Prekinitve) ---
         function naloziParcele() {
             if (!document.getElementById('check-parcele').checked || map.getZoom() < 18) {
-                parceleLayer.clearLayers(); return;
+                parceleLayer.clearLayers(); 
+                if (fetchAbortController) fetchAbortController.abort();
+                return;
             }
+
+            // Prekini morebiten prejšnji klic, če se mapo premakne med nalaganjem
+            if (fetchAbortController) fetchAbortController.abort();
+            fetchAbortController = new AbortController();
+
             const b = map.getBounds();
             const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
 
-            fetch(url).then(r => r.json()).then(data => {
-                parceleLayer.clearLayers();
-                L.geoJSON(data, {
-                    style: { color: "white", weight: 1.2, fillOpacity: 0 },
-                    onEachFeature: (f, l) => {
-                        const st = f.properties.ST_PARCELE || f.properties.st_parcele;
-                        l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
-                        l.on('click', (e) => { 
-                            L.DomEvent.stopPropagation(e);
-                            fetchGursData(e.latlng, st); 
-                        });
-                    }
-                }).addTo(parceleLayer);
-            });
+            fetch(url, { signal: fetchAbortController.signal })
+                .then(r => r.json())
+                .then(data => {
+                    parceleLayer.clearLayers();
+                    L.geoJSON(data, {
+                        style: { color: "white", weight: 1.2, fillOpacity: 0 },
+                        onEachFeature: (f, l) => {
+                            const st = f.properties.ST_PARCELE || f.properties.st_parcele;
+                            l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
+                            l.on('click', (e) => { 
+                                L.DomEvent.stopPropagation(e);
+                                fetchGursData(e.latlng, st); 
+                            });
+                        }
+                    }).addTo(parceleLayer);
+                })
+                .catch(err => {
+                    if (err.name !== 'AbortError') console.error("WFS Napaka:", err); // Ignoriraj napako, ki nastane zaradi namerne prekinitve
+                });
         }
 
-        map.on('moveend', naloziParcele);
+        // DEBOUNCING: Ko se uporabnik premakne, počakamo 300ms pred klicem
+        map.on('moveend', () => {
+            clearTimeout(mapMoveTimeout);
+            mapMoveTimeout = setTimeout(naloziParcele, 300);
+        });
 
         // --- LOKACIJA & ISKANJE ---
         function toggleGeolokacija() {
