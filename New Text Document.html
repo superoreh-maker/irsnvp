@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GURS GIS Pregledovalnik v3</title>
+    <title>GURS GIS Pregledovalnik v4</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #000; }
         #map { width: 100%; height: 100%; z-index: 1; }
         
+        /* Meni */
         .main-menu {
             position: absolute; top: 15px; left: 15px; z-index: 1000;
             background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
@@ -22,26 +23,28 @@
         .menu-content { padding: 15px; }
         .search-row { display: flex; margin-bottom: 12px; gap: 5px; }
         #search-input { flex: 1; border: 1px solid #ddd; padding: 8px; border-radius: 6px; outline: none; }
-        #search-btn { background: #2c3e50; color: white; border: none; padding: 0 12px; border-radius: 6px; }
+        #search-btn { background: #2c3e50; color: white; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; }
 
         .row { display: flex; align-items: center; margin-bottom: 10px; font-size: 13px; cursor: pointer; }
         .row input { margin-right: 10px; width: 18px; height: 18px; }
 
+        /* Stil za številke parcel */
         .parcel-tooltip {
             background: transparent !important; border: none !important; box-shadow: none !important;
             color: white !important; font-size: 12px; font-weight: 900;
-            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            text-shadow: -1.2px -1.2px 0 #000, 1.2px -1.2px 0 #000, -1.2px 1.2px 0 #000, 1.2px 1.2px 0 #000;
         }
 
+        /* Info Okno */
         #info-okno {
             position: absolute; bottom: -600px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 380px; background: white; border-radius: 15px 15px 0 0;
             box-shadow: 0px -5px 25px rgba(0,0,0,0.4); z-index: 2000; padding: 20px;
-            transition: bottom 0.4s ease-out; border-top: 6px solid #e67e22;
+            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); border-top: 6px solid #e67e22;
         }
         .mini-podatek { margin: 10px 0; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; }
         .mini-label { color: #999; font-size: 10px; text-transform: uppercase; font-weight: bold; }
-        .mini-val { color: #333; font-size: 15px; font-weight: 600; display: block; }
+        .mini-val { color: #333; font-size: 15px; font-weight: 600; display: block; margin-top: 2px;}
     </style>
 </head>
 <body>
@@ -49,15 +52,15 @@
     <div id="main-menu" class="main-menu">
         <div class="menu-header" onclick="toggleMenu()">
             <button id="toggle-menu-btn">☰</button>
-            <span style="font-size:14px; font-weight:bold; margin-left:10px;">GURS Pregledovalnik</span>
+            <span style="font-size:14px; font-weight:bold; margin-left:10px;">GURS Pregledovalnik v4</span>
         </div>
         <div class="menu-content">
             <div class="search-row">
-                <input type="text" id="search-input" placeholder="Išči naslov...">
+                <input type="text" id="search-input" placeholder="Vpiši naslov...">
                 <button id="search-btn" onclick="isciNaslov()">🔍</button>
             </div>
             <label class="row"><input type="checkbox" id="check-parcele" checked onchange="osveziSloje()"> 📐 Zemljiške parcele</label>
-            <label class="row"><input type="checkbox" id="check-labels" checked onchange="toggleLabels()"> 🛣️ Imena ulic</label>
+            <label class="row"><input type="checkbox" id="check-labels" checked onchange="toggleLabels()"> 🛣️ Imena ulic (Večja)</label>
             <label class="row"><input type="checkbox" id="check-lokacija" onchange="toggleGeolokacija()"> 📍 Moja lokacija</label>
         </div>
     </div>
@@ -67,7 +70,7 @@
     <div id="info-okno">
         <span style="float:right; cursor:pointer; font-weight:bold; color:#999;" onclick="zapriInfoOkno()">ZAPRI [X]</span>
         <h3 id="info-naslov" style="margin-top:0; color:#e67e22;">Parcela</h3>
-        <div id="info-vsebina">Izberite parcelo na zemljevidu...</div>
+        <div id="info-vsebina">Nalagam podatke... ⏳</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -86,35 +89,49 @@
         function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
         function toggleLabels() { document.getElementById('check-labels').checked ? labels.addTo(map) : map.removeLayer(labels); }
 
-        // --- GLAVNA FUNKCIJA ZA PRIDOBIVANJE GURS PODATKOV ---
+        // --- NAJBOLJŠA VARIANTA ZA PRIDOBIVANJE PODATKOV ---
         async function fetchGursData(latlng, stParcele) {
             document.getElementById("info-naslov").innerText = "Parcela " + stParcele;
-            document.getElementById("info-vsebina").innerHTML = "Povezujem se z GURS strežnikom... ⏳";
+            document.getElementById("info-vsebina").innerHTML = "Povezujem se z državnimi registri... ⏳";
             document.getElementById("info-okno").style.bottom = "0";
 
-            const buffer = 0.00005;
+            const buffer = 0.00001; // Zelo majhen bbox za natančnost
             const bbox = `${latlng.lng-buffer},${latlng.lat-buffer},${latlng.lng+buffer},${latlng.lat+buffer}`;
             
-            // Novi URL-ji za Register prostorskih enot (RPE)
-            const rpeUrl = `https://ipi.eprostor.gov.si/wfs-si-gurs-rpe/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+            // Trije različni vstopni točki za maksimalno zanesljivost
+            const rpeBase = `https://ipi.eprostor.gov.si/wfs-si-gurs-rpe/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+            const knBase = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn-osnovni/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
 
             try {
                 const [resKO, resObc, resUE] = await Promise.allSettled([
-                    fetch(rpeUrl + "&typeName=SI.GURS.RPE:KATASTRSKE_OBCINE").then(r => r.json()),
-                    fetch(rpeUrl + "&typeName=SI.GURS.RPE:OBCINE").then(r => r.json()),
-                    fetch(rpeUrl + "&typeName=SI.GURS.RPE:UPRAVNE_ENOTE").then(r => r.json())
+                    fetch(knBase + "&typeName=KATASTRSKE_OBCINE_TABELA").then(r => r.json()),
+                    fetch(rpeBase + "&typeName=SI.GURS.RPE:OBCINE").then(r => r.json()),
+                    fetch(rpeBase + "&typeName=SI.GURS.RPE:UPRAVNE_ENOTE").then(r => r.json())
                 ]);
 
-                const getVal = (res) => (res.status === "fulfilled" && res.value.features?.length > 0) ? res.value.features[0].properties.UIME : "Ni podatka";
+                // Funkcija, ki inteligentno preišče vse možne nazive polj v vrnjenem JSON-u
+                const extractName = (settledRes) => {
+                    if (settledRes.status === "fulfilled" && settledRes.value.features?.length > 0) {
+                        const props = settledRes.value.features[0].properties;
+                        // Preišči prioriteto polj: UIME (uradno ime), IME, NAZIV, ali karkoli vsebuje 'IME'
+                        return props.UIME || props.IME || props.NAZIV || props.NAZIV_KO || 
+                               Object.values(props).find(v => typeof v === 'string' && v.length > 2) || "Ni najdeno";
+                    }
+                    return "Strežnik neodziven";
+                };
+
+                const ko = extractName(resKO);
+                const obcina = extractName(resObc);
+                const ue = extractName(resUE);
 
                 document.getElementById("info-vsebina").innerHTML = `
-                    <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${getVal(resKO)}</span></div>
-                    <div class="mini-podatek"><span class="mini-label">Občina</span><span class="mini-val">${getVal(resObc)}</span></div>
-                    <div class="mini-podatek"><span class="mini-label">Upravna enota</span><span class="mini-val">${getVal(resUE)}</span></div>
-                    <div style="margin-top:10px; font-size:11px; color:#aaa; text-align:center;">Vir: GURS (e-prostor)</div>
+                    <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${ko}</span></div>
+                    <div class="mini-podatek"><span class="mini-label">Občina</span><span class="mini-val">${obcina}</span></div>
+                    <div class="mini-podatek"><span class="mini-label">Upravna enota</span><span class="mini-val">${ue}</span></div>
+                    <div style="margin-top:10px; font-size:10px; color:#ccc; text-align:center;">Vir podatkov: GURS e-prostor</div>
                 `;
             } catch (err) {
-                document.getElementById("info-vsebina").innerHTML = "Napaka pri branju GURS registra. Poskusite ponovno.";
+                document.getElementById("info-vsebina").innerHTML = "Težava pri komunikaciji z GURS strežnikom.";
             }
         }
 
@@ -129,7 +146,7 @@
             fetch(url).then(r => r.json()).then(data => {
                 parceleLayer.clearLayers();
                 L.geoJSON(data, {
-                    style: { color: "white", weight: 1, fillOpacity: 0 },
+                    style: { color: "white", weight: 1.2, fillOpacity: 0 },
                     onEachFeature: (f, l) => {
                         const st = f.properties.ST_PARCELE || f.properties.st_parcele;
                         l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
@@ -147,7 +164,7 @@
         // --- LOKACIJA & ISKANJE ---
         function toggleGeolokacija() {
             if (document.getElementById('check-lokacija').checked) {
-                map.locate({setView: true, maxZoom: 19, watch: true, enableHighAccuracy: true});
+                map.locate({setView: true, maxZoom: 19, enableHighAccuracy: true});
                 map.on('locationfound', e => {
                     if (userMarker) userMarker.setLatLng(e.latlng);
                     else userMarker = L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#3498db', fillOpacity: 1, weight: 2}).addTo(map);
