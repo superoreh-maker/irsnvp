@@ -36,6 +36,457 @@
             pointer-events: none !important; 
         }
 
+        /* Info Okno */
+        #info-okno {
+            position: absolute; bottom: -600px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 380px; background: white; border-radius: 15px 15px 0 0;
+            box-shadow: 0px -5px 25px rgba(0,0,0,0.4); z-index: 2000; padding: 20px;
+            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); border-top: 6px solid #e67e22;
+        }
+        .mini-podatek { margin: 10px 0; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; }
+        .mini-label { color: #999; font-size: 10px; text-transform: uppercase; font-weight: bold; }
+        .mini-val { color: #333; font-size: 15px; font-weight: 600; display: block; margin-top: 2px;}
+    </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<div id="main-menu" class="main-menu collapsed">
+    <div class="menu-header" onclick="toggleMenu()">
+            <button id="toggle-menu-btn">☰</button>
+            <span style="font-size:14px; font-weight:bold; margin-left:10px;">GURS Pregledovalnik v4</span>
+        </div>
+        <div class="menu-content">
+            <div class="search-row">
+                <input type="text" id="search-input" placeholder="Vpiši naslov...">
+                <button id="search-btn" onclick="isciNaslov()">🔍</button>
+            </div>
+            <label class="row"><input type="checkbox" id="check-parcele" checked onchange="naloziParcele()"> 📐 Zemljiške parcele</label>
+            <label class="row"><input type="checkbox" id="check-labels" checked onchange="toggleLabels()"> 🛣️ Imena ulic (Večja)</label>
+            <label class="row"><input type="checkbox" id="check-lokacija" checked onchange="toggleGeolokacija()"> 📍 Moja lokacija</label>            
+            <label class="row"><input type="checkbox" id="check-mojetocke" checked onchange="toggleMojeTocke()"> 📌 Moje točke</label>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="info-okno">
+        <span style="float:right; cursor:pointer; font-weight:bold; color:#999;" onclick="zapriInfoOkno()">ZAPRI [X]</span>
+        <h3 id="info-naslov" style="margin-top:0; color:#e67e22;">Parcela</h3>
+        <div id="info-vsebina">Nalagam podatke... ⏳</div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- BRANJE POVEZAVE (DELJENA LOKACIJA) ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const sharedLat = urlParams.get('lat');
+        const sharedLng = urlParams.get('lng');
+        const sharedZoom = urlParams.get('zoom');
+        
+        // Privzeta lokacija (Ljubljana) ali lokacija iz povezave
+        let startLat = sharedLat ? parseFloat(sharedLat) : 46.05;
+        let startLng = sharedLng ? parseFloat(sharedLng) : 14.5;
+        let startZoom = sharedZoom ? parseInt(sharedZoom) : 13;
+
+        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 });
+        const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', { zIndex: 1000, zoomOffset: -1, tileSize: 512 });
+
+        const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([startLat, startLng], startZoom);
+        satellite.addTo(map);
+        labels.addTo(map);
+
+        let parceleLayer = L.layerGroup().addTo(map);
+        let userMarker = null;
+        
+        let mapMoveTimeout = null;
+        let fetchAbortController = null;
+
+        function toggleMenu() { document.getElementById('main-menu').classList.toggle('collapsed'); }
+        function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
+        function toggleLabels() { document.getElementById('check-labels').checked ? labels.addTo(map) : map.removeLayer(labels); }
+
+        // --- FUNKCIJA ZA KOPIRANJE POVEZAVE ---
+        function deliLokacijo(lat, lng) {
+            // Sestavimo novo povezavo s trenutno domeno in dodamo parametre
+            const baseUrl = window.location.href.split('?')[0];
+            const shareUrl = `${baseUrl}?lat=${lat}&lng=${lng}&zoom=19`;
+            
+            // Kopiranje v odložišče
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert("🔗 Povezava do te točke je bila uspešno kopirana!\nLahko jo prilepiš (Ctrl+V) in pošlješ naprej.");
+            }).catch(err => {
+                // Če brskalnik blokira samodejno kopiranje, ponudimo klasično okno
+                prompt("Kopiraj spodnjo povezavo:", shareUrl);
+            });
+        }
+
+        // --- ZK DOKUMENT ---
+        function odpriZK(koSifra, stParcele) {
+            if (!koSifra || !stParcele || koSifra === '-' || stParcele === '-') {
+                alert("Podatki o KO ali parceli manjkajo!");
+                return;
+            }
+
+            let cistaParcela = stParcele.toString().trim();
+            if (cistaParcela.includes(' ')) {
+                cistaParcela = cistaParcela.split(' ').pop();
+            }
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'https://evlozisce.sodisce.si/evlozisce/javni_izpisi/03-001.html';
+            form.target = '_blank';
+
+            const params = {
+                'nacinList': 'IDZNAK',
+                'tipNepList.nobind': '1',
+                'idZnakNep.katastrskaObcina.idsrcsifrant': koSifra.toString().trim(),
+                'idZnakNep.parcelnaStevilkaNovo': cistaParcela,
+                '_eventId_pdf': 'Prikaži v pdf obliki'
+            };
+
+            for (const key in params) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = params[key];
+                form.appendChild(input);
+            }
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        }
+
+        // --- GURS JAVNI VPOGLED & REGISTER VREDNOTENJA ---
+        async function odpriGURS(koSifra, stParcele, znaniEid, lat, lng, type) {
+            const baseUrl = type === 'RV' ? 'https://ipi.eprostor.gov.si/rv/' : 'https://ipi.eprostor.gov.si/jv/';
+
+            if (znaniEid && znaniEid !== 'undefined' && znaniEid !== 'null' && znaniEid !== '') {
+                window.open(`${baseUrl}?eid=${znaniEid}`, '_blank');
+                return;
+            }
+
+            if (!lat || !lng) {
+                alert("Brez koordinat ne morem pridobiti EID parcele.");
+                return;
+            }
+
+            try {
+                document.body.style.cursor = 'wait'; 
+                const buffer = 0.00001; 
+                const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
+                
+                const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                document.body.style.cursor = 'default';
+
+                if (data && data.features && data.features.length > 0) {
+                    let cistaParcela = stParcele.toString().trim();
+                    if (cistaParcela.includes(' ')) cistaParcela = cistaParcela.split(' ').pop();
+
+                    let matchedFeature = data.features[0]; 
+                    for(let f of data.features) {
+                        let st = f.properties.ST_PARCELE || f.properties.st_parcele || "";
+                        if (st.toString() === cistaParcela) {
+                            matchedFeature = f;
+                            break;
+                        }
+                    }
+
+                    const props = matchedFeature.properties;
+                    const eid = props.EID || props.eid || props.OST_EID || props.ost_eid;
+                    
+                    if (eid) {
+                        window.open(`${baseUrl}?eid=${eid}`, '_blank');
+                    } else {
+                        alert("EID parcele ni bil najden v GURS bazi na tej točki.");
+                    }
+                } else {
+                    alert(`GURS strežnik ni našel podatkov o parceli na teh koordinatah.`);
+                }
+            } catch (error) {
+                document.body.style.cursor = 'default';
+                console.error("Napaka pri WFS poizvedbi za EID:", error);
+                alert("Napaka pri povezavi z GURS strežnikom. Preverite internetno povezavo.");
+            }
+        }
+
+        async function fetchGursData(latlng, stParcele, eid) {
+            document.getElementById("info-naslov").innerText = "... " + stParcele; 
+            document.getElementById("info-vsebina").innerHTML = "Povezujem se z državnimi registri... ⏳";
+            document.getElementById("info-okno").style.bottom = "0";
+
+            const buffer = 0.00001; 
+            const bbox = `${latlng.lng-buffer},${latlng.lat-buffer},${latlng.lng+buffer},${latlng.lat+buffer}`;
+            
+            const rpeBase = `https://ipi.eprostor.gov.si/wfs-si-gurs-rpe/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+            const knBase = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn-osnovni/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+
+            try {
+                const [resKO, resObc, resUE] = await Promise.allSettled([
+                    fetch(knBase + "&typeName=KATASTRSKE_OBCINE_TABELA").then(r => r.json()),
+                    fetch(rpeBase + "&typeName=SI.GURS.RPE:OBCINE").then(r => r.json()),
+                    fetch(rpeBase + "&typeName=SI.GURS.RPE:UPRAVNE_ENOTE").then(r => r.json())
+                ]);
+
+                const extractName = (settledRes) => {
+                    if (settledRes.status === "fulfilled" && settledRes.value.features?.length > 0) {
+                        const props = settledRes.value.features[0].properties;
+                        return props.UIME || props.IME || props.NAZIV || props.NAZIV_KO || 
+                               Object.values(props).find(v => typeof v === 'string' && v.length > 2) || "Ni najdeno";
+                    }
+                    return "Ni najdeno";
+                };
+
+                const extractCode = (settledRes) => {
+                    if (settledRes.status === "fulfilled" && settledRes.value.features?.length > 0) {
+                        const props = settledRes.value.features[0].properties;
+                        return props.SIFRA || props.KO_SIFRA || props.sifra || props.KO_ID || "----";
+                    }
+                    return "----";
+                };
+
+                const koIme = extractName(resKO);
+                const koSifra = extractCode(resKO);
+                const obcina = extractName(resObc);
+                const ue = extractName(resUE);
+
+                document.getElementById("info-naslov").innerText = koSifra + " " + stParcele;
+
+                const zkButton = koSifra !== "----" ? `<button onclick="odpriZK('${koSifra}', '${stParcele}')" style="margin-top: 15px; padding: 10px; background: #c0392b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">📄 Prenesi ZK izpisek (PDF)</button>` : '';
+                const gursJVButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}', null, null, 'JV')" style="flex:1; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">🌍 GURS (JV)</button>` : '';
+                const gursRVButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}', null, null, 'RV')" style="flex:1; padding: 10px; background: #e67e22; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">💰 GURS (RV)</button>` : '';
+
+                document.getElementById("info-vsebina").innerHTML = `
+                    <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${koIme}</span></div>
+                    <div class="mini-podatek"><span class="mini-label">Občina</span><span class="mini-val">${obcina}</span></div>
+                    <div class="mini-podatek"><span class="mini-label">Upravna enota</span><span class="mini-val">${ue}</span></div>
+                    ${zkButton}
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        ${gursJVButton}
+                        ${gursRVButton}
+                    </div>
+                    <div style="margin-top:10px; font-size:10px; color:#ccc; text-align:center;">Vir podatkov: GURS e-prostor</div>
+                `;
+            } catch (err) {
+                document.getElementById("info-vsebina").innerHTML = "Težava pri komunikaciji z GURS strežnikom.";
+                document.getElementById("info-naslov").innerText = "Napaka " + stParcele;
+            }
+        }
+
+        function naloziParcele() {
+            if (!document.getElementById('check-parcele').checked || map.getZoom() < 18) {
+                parceleLayer.clearLayers(); 
+                if (fetchAbortController) fetchAbortController.abort();
+                return;
+            }
+
+            if (fetchAbortController) fetchAbortController.abort();
+            fetchAbortController = new AbortController();
+
+            const b = map.getBounds();
+            const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
+
+            fetch(url, { signal: fetchAbortController.signal })
+                .then(r => r.json())
+                .then(data => {
+                    parceleLayer.clearLayers();
+                    L.geoJSON(data, {
+                        style: { color: "white", weight: 1.2, fillOpacity: 0 },
+                        onEachFeature: (f, l) => {
+                            const st = f.properties.ST_PARCELE || f.properties.st_parcele;
+                            const eid = f.properties.EID || f.properties.eid || f.properties.OST_EID || f.properties.ost_eid || '';
+                            
+                            l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
+                            l.on('click', (e) => { 
+                                L.DomEvent.stopPropagation(e);
+                                fetchGursData(e.latlng, st, eid); 
+                            });
+                        }
+                    }).addTo(parceleLayer);
+                })
+                .catch(err => {
+                    if (err.name !== 'AbortError') console.error("WFS Napaka:", err); 
+                });
+        }
+
+        map.on('moveend', () => {
+            clearTimeout(mapMoveTimeout);
+            mapMoveTimeout = setTimeout(naloziParcele, 300);
+        });
+
+        function toggleGeolokacija() {
+            if (document.getElementById('check-lokacija').checked) {
+                map.locate({setView: true, maxZoom: 19, enableHighAccuracy: true});
+                map.on('locationfound', e => {
+                    if (userMarker) userMarker.setLatLng(e.latlng);
+                    else userMarker = L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#3498db', fillOpacity: 1, weight: 2}).addTo(map);
+                });
+            } else { map.stopLocate(); if(userMarker) map.removeLayer(userMarker); userMarker = null; }
+        }
+
+        async function isciNaslov() {
+            const q = document.getElementById('search-input').value;
+            if (!q) return;
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=si`);
+            const data = await res.json();
+            if (data.length > 0) map.setView([data[0].lat, data[0].lon], 19);
+        }
+
+        let mojeTockeLayer = L.layerGroup().addTo(map);
+        const googleSheetsCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQGHIoNVspAhEHLg6i8jt7iXdY1dxiEOWkU1VMiUkkWAlOf42eTGR0KQmKDv16XG8nNOMNyrw_VkHwU/pub?gid=929707322&single=true&output=csv";
+
+        function najdiVrednostStolpca(row, iskanoIme) {
+            const iskano = iskanoIme.toLowerCase().trim();
+            for (let kljuc in row) {
+                if (kljuc.toLowerCase().trim() === iskano) {
+                    return row[kljuc] ? row[kljuc].trim() : '';
+                }
+            }
+            return '';
+        }
+
+        function naloziMojeTocke() {
+            mojeTockeLayer.clearLayers(); 
+
+            Papa.parse(googleSheetsCsvUrl, {
+                download: true,
+                header: true, 
+                skipEmptyLines: true, 
+                complete: function(results) {
+                    results.data.forEach(row => {
+                        const koordinateStr = najdiVrednostStolpca(row, 'Koordinate Google maps');
+                        
+                        if (koordinateStr && koordinateStr.includes(',')) {
+                            const parts = koordinateStr.split(',');
+                            const lat = parseFloat(parts[0].trim()); 
+                            const lng = parseFloat(parts[1].trim());
+                            
+                            if (!isNaN(lat) && !isNaN(lng)) {
+                                
+                                const postopek = najdiVrednostStolpca(row, 'Postopek') || 'Št. postopka';
+                                const naziv = najdiVrednostStolpca(row, 'Naziv') || 'Neznan naziv';
+                                const idUa = najdiVrednostStolpca(row, 'ID UA') || '-';
+                                const upravniOrgan = najdiVrednostStolpca(row, 'Upravni organ') || '-';
+                                const obcina = najdiVrednostStolpca(row, 'Občina') || '-';
+                                const investitor = najdiVrednostStolpca(row, 'Investitorji') || '-';
+                                const stZadeve = najdiVrednostStolpca(row, 'Št. zadeve') || '-';
+                                const datumIzd = najdiVrednostStolpca(row, 'Datum izd.') || '-';
+                                const datPrav = najdiVrednostStolpca(row, 'Dat. prav.') || '-';
+                                const zacetekGradnje = najdiVrednostStolpca(row, 'Datum prij. zač. grad.') || '-';
+                                const status = najdiVrednostStolpca(row, 'Način rešitve') || '-';
+                                const imeKo = najdiVrednostStolpca(row, 'Ime KO') || '-';
+                                const sifraKo = najdiVrednostStolpca(row, 'Šifra KO') || '-';
+                                const parcelaInfo = najdiVrednostStolpca(row, 'KO + parcela') || '-';
+                                
+                                const pisUrl = najdiVrednostStolpca(row, 'PIS');
+                                const fotoUrl = najdiVrednostStolpca(row, 'FOTO');
+                                const onenoteUrl = najdiVrednostStolpca(row, 'OneNote');
+                                const iobcinaUrl = najdiVrednostStolpca(row, 'iobcina');
+                                
+                                const pisLink = `<a href="${pisUrl || '#'}" ${pisUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #3498db; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 PIS</a>`;
+                                const fotoLink = `<a href="${fotoUrl || '#'}" ${fotoUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2ecc71; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📷 FOTO</a>`;
+                                const onedriveLink = `<a href="${fotoUrl || '#'}" ${fotoUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #0078D4; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">☁️ OneDrive</a>`;
+                                const onenoteLink = `<a href="${onenoteUrl || '#'}" ${onenoteUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #7719AA; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📓 OneNote</a>`;
+                                const iobcinaLink = `<a href="${iobcinaUrl || '#'}" ${iobcinaUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #9b59b6; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🗺️ iObčina</a>`;
+                                
+                                const isZkValid = (sifraKo !== '-' && sifraKo !== '' && parcelaInfo !== '-' && parcelaInfo !== '');
+                                const zkLink = `<a href="#" onclick="${isZkValid ? `odpriZK('${sifraKo}', '${parcelaInfo}');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #c0392b; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📄 ZK</a>`;
+                                
+                                const gursJvLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}', null, ${lat}, ${lng}, 'JV');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2980b9; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🌍 GURS (JV)</a>`;
+                                const gursRvLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}', null, ${lat}, ${lng}, 'RV');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #e67e22; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">💰 GURS (RV)</a>`;
+                                
+                                // DODAN GUMB ZA DELJENJE
+                                const shareLink = `<a href="#" onclick="deliLokacijo(${lat}, ${lng}); return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #34495e; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 Deli lokacijo</a>`;
+
+                                const obiskanoText = (najdiVrednostStolpca(row, 'obiskano').toLowerCase() === 'da') 
+                                    ? '<span style="color: #27ae60; font-weight: bold;">✓ Obiskano</span>' 
+                                    : '<span style="color: #e74c3c; font-weight: bold;">✗ Še ni obiskano</span>';
+
+                                const marker = L.marker([lat, lng]);
+                                
+                                const popupVsebina = `
+                                    <div style="min-width: 290px; font-family: 'Segoe UI', sans-serif;">
+                                        <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px;">${postopek} | ID UA: ${idUa}</div>
+                                        <h4 style="margin:2px 0 8px 0; color:#2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; font-size: 13px;">${naziv}</h4>
+                                        
+                                        <table style="width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 10px;">
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d; width: 100px;">Upravni organ:</td><td style="font-weight: 500;">${upravniOrgan}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Občina:</td><td style="font-weight: 500;">${obcina}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Investitor:</td><td style="font-weight: 500;">${investitor}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Št. zadeve:</td><td style="font-weight: 500;">${stZadeve}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Datum izdaje:</td><td style="font-weight: 500;">${datumIzd}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Pravnomočnost:</td><td style="font-weight: 500;">${datPrav}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Začetek gradnje:</td><td style="font-weight: 500;">${zacetekGradnje}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Način rešitve:</td><td style="font-weight: 500;">${status}</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Katastrska občina:</td><td style="font-weight: 500;">${imeKo} (${sifraKo})</td></tr>
+                                            <tr><td style="padding: 2px 0; color: #7f8c8d;">Parcela:</td><td style="font-weight: 500;">${parcelaInfo}</td></tr>
+                                        </table>
+                                        
+                                        <div style="margin-top: 5px; font-size: 12px; border-top: 1px solid #eee; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                            ${obiskanoText}
+                                        </div>
+                                        
+                                        <div style="margin-top: 10px; display: flex; gap: 5px; flex-wrap: wrap;">
+                                            ${pisLink}
+                                            ${fotoLink}
+                                            ${onedriveLink}
+                                            ${onenoteLink}
+                                            ${iobcinaLink}
+                                            ${zkLink}
+                                            ${gursJvLink}
+                                            ${gursRvLink}
+                                            ${shareLink}
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                marker.bindPopup(popupVsebina);
+                                marker.addTo(mojeTockeLayer);
+
+                                // Če smo aplikacijo odprli preko deljene povezave za to točko, avtomatsko odpri oblaček
+                                if (sharedLat && sharedLng && Math.abs(lat - parseFloat(sharedLat)) < 0.0001 && Math.abs(lng - parseFloat(sharedLng)) < 0.0001) {
+                                    setTimeout(() => marker.openPopup(), 500);
+                                }
+                            }
+                        }
+                    });
+                },
+                error: function(error) {
+                    console.error("Napaka pri branju Google Sheets CSV:", error);
+                }
+            });
+        }
+
+        function toggleMojeTocke() {
+            if (document.getElementById('check-mojetocke').checked) {
+                map.addLayer(mojeTockeLayer);
+                naloziMojeTocke(); 
+            } else {
+                map.removeLayer(mojeTockeLayer);
+            }
+        }
+
+        naloziMojeTocke();
+
+        // Če odpremo zunanjo "Deli" povezavo, NE sprožimo GPS lociranja avtomatsko,
+        // ampak samo vizualno odznačimo kljukico "Moja lokacija", da nas ne vrže stran od izbrane točke.
+        if (sharedLat && sharedLng) {
+            document.getElementById('check-lokacija').checked = false;
+        } else {
+            toggleGeolokacija();
+        }
+
+    </script>
+</body>
+</html>
+        }
+
         /* Kompaktno Info Okno */
         #info-okno {
             position: absolute; bottom: -600px; left: 50%; transform: translateX(-50%);
@@ -998,5 +1449,6 @@
 </script>
 </body>
 </html>
+
 
 
