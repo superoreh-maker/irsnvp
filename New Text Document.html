@@ -273,7 +273,7 @@
                             
                             if (!isNaN(lat) && !isNaN(lng)) {
                                 
-                                const postopek = row['Postopek'] || 'Brez postopka';
+                                const postopek = row['Postopek'] || 'Št. postopka';
                                 const naziv = row['Naziv'] || 'Neznan naziv';
                                 const idUa = row['ID UA'] || '-';
                                 const upravniOrgan = row['Upravni organ'] || '-';
@@ -303,7 +303,7 @@
                                 
                                 const popupVsebina = `
                                     <div style="min-width: 290px; font-family: 'Segoe UI', sans-serif;">
-                                        <div style="font-size: 10px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px;">${postopek} | ID: ${idUa}</div>
+                                        <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px;">${postopek} | ID: ${idUa}</div>
                                         <h4 style="margin:2px 0 8px 0; color:#2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; font-size: 13px;">${naziv}</h4>
                                         
                                         <table style="width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 10px;">
@@ -359,5 +359,6 @@
     </script>
 </body>
 </html>
+
 
 
