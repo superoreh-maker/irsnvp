@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GURS GIS Pregledovalnik v4.1 - Optimiziran</title>
+    <title>IRSNVP Pregledovalnik</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #000; }
@@ -54,7 +54,7 @@
 <div id="main-menu" class="main-menu collapsed">
     <div class="menu-header" onclick="toggleMenu()">
             <button id="toggle-menu-btn">☰</button>
-            <span style="font-size:14px; font-weight:bold; margin-left:10px;">GURS Pregledovalnik v4.1</span>
+            <span style="font-size:14px; font-weight:bold; margin-left:10px;">IRSNVP Pregledovalnik v4.2</span>
         </div>
         <div class="menu-content">
             <div class="search-row">
@@ -78,10 +78,21 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+        // --- BRANJE POVEZAVE (DELJENA LOKACIJA) ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const sharedLat = urlParams.get('lat');
+        const sharedLng = urlParams.get('lng');
+        const sharedZoom = urlParams.get('zoom');
+        
+        // Privzeta lokacija (Ljubljana) ali lokacija iz povezave
+        let startLat = sharedLat ? parseFloat(sharedLat) : 46.05;
+        let startLng = sharedLng ? parseFloat(sharedLng) : 14.5;
+        let startZoom = sharedZoom ? parseInt(sharedZoom) : 13;
+
         const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 });
         const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', { zIndex: 1000, zoomOffset: -1, tileSize: 512 });
 
-        const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([46.05, 14.5], 13);
+        const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([startLat, startLng], startZoom);
         satellite.addTo(map);
         labels.addTo(map);
 
@@ -94,6 +105,21 @@
         function toggleMenu() { document.getElementById('main-menu').classList.toggle('collapsed'); }
         function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
         function toggleLabels() { document.getElementById('check-labels').checked ? labels.addTo(map) : map.removeLayer(labels); }
+
+        // --- FUNKCIJA ZA KOPIRANJE POVEZAVE ---
+        function deliLokacijo(lat, lng) {
+            // Sestavimo novo povezavo s trenutno domeno in dodamo parametre
+            const baseUrl = window.location.href.split('?')[0];
+            const shareUrl = `${baseUrl}?lat=${lat}&lng=${lng}&zoom=19`;
+            
+            // Kopiranje v odložišče
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert("🔗 Povezava do te točke je bila uspešno kopirana!\nLahko jo prilepiš (Ctrl+V) in pošlješ naprej.");
+            }).catch(err => {
+                // Če brskalnik blokira samodejno kopiranje, ponudimo klasično okno
+                prompt("Kopiraj spodnjo povezavo:", shareUrl);
+            });
+        }
 
         // --- ZK DOKUMENT ---
         function odpriZK(koSifra, stParcele) {
@@ -133,28 +159,25 @@
             document.body.removeChild(form);
         }
 
-        // --- GURS JAVNI VPOGLED & REGISTER VREDNOTENJA (POPRAVLJEN EID OBVOZ) ---
+        // --- GURS JAVNI VPOGLED & REGISTER VREDNOTENJA ---
         async function odpriGURS(koSifra, stParcele, znaniEid, lat, lng, type) {
             const baseUrl = type === 'RV' ? 'https://ipi.eprostor.gov.si/rv/' : 'https://ipi.eprostor.gov.si/jv/';
 
-            // 1. Če smo EID prebrali že iz zemljevida (klik na mapo)
             if (znaniEid && znaniEid !== 'undefined' && znaniEid !== 'null' && znaniEid !== '') {
                 window.open(`${baseUrl}?eid=${znaniEid}`, '_blank');
                 return;
             }
 
-            // 2. Če EID nimamo (klik iz Mojih Točk), uporabimo LAT/LNG in naredimo mikroskopski sken
             if (!lat || !lng) {
                 alert("Brez koordinat ne morem pridobiti EID parcele.");
                 return;
             }
 
             try {
-                document.body.style.cursor = 'wait'; // Kazalec za nalaganje
+                document.body.style.cursor = 'wait'; 
                 const buffer = 0.00001; 
                 const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
                 
-                // Namesto tvegane CQL poizvedbe, preverimo s preizkušenim BBOX klicem
                 const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
                 
                 const res = await fetch(url);
@@ -166,7 +189,6 @@
                     let cistaParcela = stParcele.toString().trim();
                     if (cistaParcela.includes(' ')) cistaParcela = cistaParcela.split(' ').pop();
 
-                    // Preverimo, katera od najdenih parcel ima pravo številko (v primeru da jih je na tisti točki več)
                     let matchedFeature = data.features[0]; 
                     for(let f of data.features) {
                         let st = f.properties.ST_PARCELE || f.properties.st_parcele || "";
@@ -237,8 +259,6 @@
                 document.getElementById("info-naslov").innerText = koSifra + " " + stParcele;
 
                 const zkButton = koSifra !== "----" ? `<button onclick="odpriZK('${koSifra}', '${stParcele}')" style="margin-top: 15px; padding: 10px; background: #c0392b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">📄 Prenesi ZK izpisek (PDF)</button>` : '';
-                
-                // JV in RV gumba za drseče okence
                 const gursJVButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}', null, null, 'JV')" style="flex:1; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">🌍 GURS (JV)</button>` : '';
                 const gursRVButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}', null, null, 'RV')" style="flex:1; padding: 10px; background: #e67e22; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">💰 GURS (RV)</button>` : '';
 
@@ -280,7 +300,6 @@
                         style: { color: "white", weight: 1.2, fillOpacity: 0 },
                         onEachFeature: (f, l) => {
                             const st = f.properties.ST_PARCELE || f.properties.st_parcele;
-                            // Preberemo in shranimo EID že ob iskanju parcele!
                             const eid = f.properties.EID || f.properties.eid || f.properties.OST_EID || f.properties.ost_eid || '';
                             
                             l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
@@ -379,10 +398,12 @@
                                 const isZkValid = (sifraKo !== '-' && sifraKo !== '' && parcelaInfo !== '-' && parcelaInfo !== '');
                                 const zkLink = `<a href="#" onclick="${isZkValid ? `odpriZK('${sifraKo}', '${parcelaInfo}');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #c0392b; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📄 ZK</a>`;
                                 
-                                // Dodana oba GURS gumba, predata LAT/LNG za natančno določanje EID
                                 const gursJvLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}', null, ${lat}, ${lng}, 'JV');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2980b9; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🌍 GURS (JV)</a>`;
                                 const gursRvLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}', null, ${lat}, ${lng}, 'RV');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #e67e22; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">💰 GURS (RV)</a>`;
                                 
+                                // DODAN GUMB ZA DELJENJE
+                                const shareLink = `<a href="#" onclick="deliLokacijo(${lat}, ${lng}); return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #34495e; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 Deli lokacijo</a>`;
+
                                 const obiskanoText = (najdiVrednostStolpca(row, 'obiskano').toLowerCase() === 'da') 
                                     ? '<span style="color: #27ae60; font-weight: bold;">✓ Obiskano</span>' 
                                     : '<span style="color: #e74c3c; font-weight: bold;">✗ Še ni obiskano</span>';
@@ -407,7 +428,7 @@
                                             <tr><td style="padding: 2px 0; color: #7f8c8d;">Parcela:</td><td style="font-weight: 500;">${parcelaInfo}</td></tr>
                                         </table>
                                         
-                                        <div style="margin-top: 5px; font-size: 12px; border-top: 1px solid #eee; padding-top: 8px;">
+                                        <div style="margin-top: 5px; font-size: 12px; border-top: 1px solid #eee; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
                                             ${obiskanoText}
                                         </div>
                                         
@@ -420,12 +441,18 @@
                                             ${zkLink}
                                             ${gursJvLink}
                                             ${gursRvLink}
+                                            ${shareLink}
                                         </div>
                                     </div>
                                 `;
                                 
                                 marker.bindPopup(popupVsebina);
                                 marker.addTo(mojeTockeLayer);
+
+                                // Če smo aplikacijo odprli preko deljene povezave za to točko, avtomatsko odpri oblaček
+                                if (sharedLat && sharedLng && Math.abs(lat - parseFloat(sharedLat)) < 0.0001 && Math.abs(lng - parseFloat(sharedLng)) < 0.0001) {
+                                    setTimeout(() => marker.openPopup(), 500);
+                                }
                             }
                         }
                     });
@@ -446,8 +473,15 @@
         }
 
         naloziMojeTocke();
-        toggleGeolokacija();
+
+        // Če odpremo zunanjo "Deli" povezavo, NE sprožimo GPS lociranja avtomatsko,
+        // ampak samo vizualno odznačimo kljukico "Moja lokacija", da nas ne vrže stran od izbrane točke.
+        if (sharedLat && sharedLng) {
+            document.getElementById('check-lokacija').checked = false;
+        } else {
+            toggleGeolokacija();
+        }
+
     </script>
 </body>
 </html>
-
