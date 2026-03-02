@@ -95,6 +95,7 @@
         function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
         function toggleLabels() { document.getElementById('check-labels').checked ? labels.addTo(map) : map.removeLayer(labels); }
 
+        // --- ZK DOKUMENT ---
         function odpriZK(koSifra, stParcele) {
             if (!koSifra || !stParcele || koSifra === '-' || stParcele === '-') {
                 alert("Podatki o KO ali parceli manjkajo!");
@@ -132,7 +133,52 @@
             document.body.removeChild(form);
         }
 
-        async function fetchGursData(latlng, stParcele) {
+        // --- GURS JAVNI VPOGLED (EID OBVOZ) ---
+        async function odpriGURS(koSifra, stParcele, znaniEid = null) {
+            // 1. Če smo EID prebrali že iz zemljevida (klik na mapo)
+            if (znaniEid && znaniEid !== 'undefined' && znaniEid !== 'null' && znaniEid !== '') {
+                window.open(`https://ipi.eprostor.gov.si/jv/?eid=${znaniEid}`, '_blank');
+                return;
+            }
+
+            // 2. Če EID nimamo (klik iz Mojih Točk), prečistimo številko in pošljemo WFS poizvedbo
+            if (!koSifra || !stParcele || koSifra === '-' || stParcele === '-') {
+                alert("Podatki o KO ali parceli manjkajo!");
+                return;
+            }
+
+            let cistaParcela = stParcele.toString().trim();
+            if (cistaParcela.includes(' ')) {
+                cistaParcela = cistaParcela.split(' ').pop();
+            }
+
+            try {
+                // Poizvedba z uporabo CQL_FILTER
+                const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&cql_filter=KO_SIFRA=${koSifra}%20AND%20ST_PARCELE=%27${cistaParcela}%27`;
+                
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data && data.features && data.features.length > 0) {
+                    const props = data.features[0].properties;
+                    // Skriti interni GURS EID (iščemo pod različnimi ključi, ker se občasno spreminjajo)
+                    const eid = props.EID || props.eid || props.OST_EID || props.ost_eid;
+                    
+                    if (eid) {
+                        window.open(`https://ipi.eprostor.gov.si/jv/?eid=${eid}`, '_blank');
+                    } else {
+                        alert("EID parcele ni bil najden v GURS bazi.");
+                    }
+                } else {
+                    alert(`Parcele ${cistaParcela} v K.O. ${koSifra} ni bilo mogoče najti na GURS strežniku.`);
+                }
+            } catch (error) {
+                console.error("Napaka pri WFS poizvedbi za EID:", error);
+                alert("Napaka pri povezavi z GURS strežnikom. Preverite internetno povezavo.");
+            }
+        }
+
+        async function fetchGursData(latlng, stParcele, eid) {
             document.getElementById("info-naslov").innerText = "... " + stParcele; 
             document.getElementById("info-vsebina").innerHTML = "Povezujem se z državnimi registri... ⏳";
             document.getElementById("info-okno").style.bottom = "0";
@@ -175,12 +221,15 @@
                 document.getElementById("info-naslov").innerText = koSifra + " " + stParcele;
 
                 const zkButton = koSifra !== "----" ? `<button onclick="odpriZK('${koSifra}', '${stParcele}')" style="margin-top: 15px; padding: 10px; background: #c0392b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">📄 Prenesi ZK izpisek (PDF)</button>` : '';
+                // Dodan gumb GURS s podanim EID, ki smo ga ulovili zgoraj
+                const gursButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}')" style="margin-top: 5px; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">🌍 Prikaži v GURS (JV)</button>` : '';
 
                 document.getElementById("info-vsebina").innerHTML = `
                     <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${koIme}</span></div>
                     <div class="mini-podatek"><span class="mini-label">Občina</span><span class="mini-val">${obcina}</span></div>
                     <div class="mini-podatek"><span class="mini-label">Upravna enota</span><span class="mini-val">${ue}</span></div>
                     ${zkButton}
+                    ${gursButton}
                     <div style="margin-top:10px; font-size:10px; color:#ccc; text-align:center;">Vir podatkov: GURS e-prostor</div>
                 `;
             } catch (err) {
@@ -210,10 +259,13 @@
                         style: { color: "white", weight: 1.2, fillOpacity: 0 },
                         onEachFeature: (f, l) => {
                             const st = f.properties.ST_PARCELE || f.properties.st_parcele;
+                            // Preberemo EID in si ga shranimo ob izrisu!
+                            const eid = f.properties.EID || f.properties.eid || f.properties.OST_EID || f.properties.ost_eid || '';
+                            
                             l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
                             l.on('click', (e) => { 
                                 L.DomEvent.stopPropagation(e);
-                                fetchGursData(e.latlng, st); 
+                                fetchGursData(e.latlng, st, eid); 
                             });
                         }
                     }).addTo(parceleLayer);
@@ -293,20 +345,21 @@
                                 const sifraKo = najdiVrednostStolpca(row, 'Šifra KO') || '-';
                                 const parcelaInfo = najdiVrednostStolpca(row, 'KO + parcela') || '-';
                                 
-                                // Povezave izvlečene z varno funkcijo
                                 const pisUrl = najdiVrednostStolpca(row, 'PIS');
                                 const fotoUrl = najdiVrednostStolpca(row, 'FOTO');
                                 const onenoteUrl = najdiVrednostStolpca(row, 'OneNote');
                                 const iobcinaUrl = najdiVrednostStolpca(row, 'iobcina');
                                 
-                                // Generiranje gumbov (samo, če URL obstaja in ni prazen)
-                                const pisLink = pisUrl ? `<a href="${pisUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #3498db; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 PIS</a>` : '';
-                                const fotoLink = fotoUrl ? `<a href="${fotoUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2ecc71; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📷 FOTO</a>` : '';
-                                const onedriveLink = fotoUrl ? `<a href="${fotoUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #0078D4; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">☁️ OneDrive</a>` : '';
-                                const onenoteLink = onenoteUrl ? `<a href="${onenoteUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #7719AA; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📓 OneNote</a>` : '';
-                                const iobcinaLink = iobcinaUrl ? `<a href="${iobcinaUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #9b59b6; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🗺️ iObčina</a>` : '';
+                                const pisLink = `<a href="${pisUrl || '#'}" ${pisUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #3498db; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 PIS</a>`;
+                                const fotoLink = `<a href="${fotoUrl || '#'}" ${fotoUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2ecc71; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📷 FOTO</a>`;
+                                const onedriveLink = `<a href="${fotoUrl || '#'}" ${fotoUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #0078D4; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">☁️ OneDrive</a>`;
+                                const onenoteLink = `<a href="${onenoteUrl || '#'}" ${onenoteUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #7719AA; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📓 OneNote</a>`;
+                                const iobcinaLink = `<a href="${iobcinaUrl || '#'}" ${iobcinaUrl ? 'target="_blank"' : 'onclick="return false;"'} style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #9b59b6; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🗺️ iObčina</a>`;
                                 
-                                const zkLink = (sifraKo !== '-' && parcelaInfo !== '-') ? `<a href="#" onclick="odpriZK('${sifraKo}', '${parcelaInfo}'); return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #c0392b; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📄 ZK</a>` : '';
+                                const isZkValid = (sifraKo !== '-' && sifraKo !== '' && parcelaInfo !== '-' && parcelaInfo !== '');
+                                const zkLink = `<a href="#" onclick="${isZkValid ? `odpriZK('${sifraKo}', '${parcelaInfo}');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #c0392b; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📄 ZK</a>`;
+                                // Dodan gumb GURS, ki uporablja WFS poizvedbo za pridobitev EID (zato nima podanega 3. argumenta)
+                                const gursLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2980b9; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🌍 GURS</a>`;
                                 
                                 const obiskanoText = (najdiVrednostStolpca(row, 'obiskano').toLowerCase() === 'da') 
                                     ? '<span style="color: #27ae60; font-weight: bold;">✓ Obiskano</span>' 
@@ -343,6 +396,7 @@
                                             ${onenoteLink}
                                             ${iobcinaLink}
                                             ${zkLink}
+                                            ${gursLink}
                                         </div>
                                     </div>
                                 `;
