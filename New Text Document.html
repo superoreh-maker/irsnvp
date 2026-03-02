@@ -51,8 +51,8 @@
 </head>
 <body>
 
-    <div id="main-menu" class="main-menu">
-        <div class="menu-header" onclick="toggleMenu()">
+<div id="main-menu" class="main-menu collapsed">
+    <div class="menu-header" onclick="toggleMenu()">
             <button id="toggle-menu-btn">☰</button>
             <span style="font-size:14px; font-weight:bold; margin-left:10px;">GURS Pregledovalnik v4</span>
         </div>
@@ -63,8 +63,7 @@
             </div>
             <label class="row"><input type="checkbox" id="check-parcele" checked onchange="naloziParcele()"> 📐 Zemljiške parcele</label>
             <label class="row"><input type="checkbox" id="check-labels" checked onchange="toggleLabels()"> 🛣️ Imena ulic (Večja)</label>
-            <label class="row"><input type="checkbox" id="check-lokacija" onchange="toggleGeolokacija()"> 📍 Moja lokacija</label>
-            <label class="row"><input type="checkbox" id="check-mojetocke" checked onchange="toggleMojeTocke()"> 📌 Moje točke</label>
+            <label class="row"><input type="checkbox" id="check-lokacija" checked onchange="toggleGeolokacija()"> 📍 Moja lokacija</label>            <label class="row"><input type="checkbox" id="check-mojetocke" checked onchange="toggleMojeTocke()"> 📌 Moje točke</label>
         </div>
     </div>
 
@@ -355,6 +354,8 @@
 
         // Klic ob zagonu
         naloziMojeTocke();
+        toggleGeolokacija();
     </script>
 </body>
 </html>
+
