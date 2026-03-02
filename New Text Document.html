@@ -1,39 +1,121 @@
-<!DOCTYPE html>
-<html lang="sl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GURS GIS Pregledovalnik v4 - Optimiziran</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #000; }
-        #map { width: 100%; height: 100%; z-index: 1; }
-        
-        /* Meni */
-        .main-menu {
-            position: absolute; top: 15px; left: 15px; z-index: 1000;
-            background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            width: 300px; transition: 0.3s; overflow: hidden;
+// 1. GLOBALNA NASTAVITEV ZA LOKACIJO (postavi pred toggleGeolokacija)
+map.on('locationfound', e => {
+    const radius = e.accuracy / 2;
+    if (userMarker) {
+        userMarker.setLatLng(e.latlng);
+    } else {
+        // Ustvarimo "modro piko" z belim robom
+        userMarker = L.circleMarker(e.latlng, {
+            radius: 8,
+            color: 'white',
+            fillColor: '#3498db',
+            fillOpacity: 1,
+            weight: 2
+        }).addTo(map);
+    }
+    // Opcijsko: krog natančnosti
+    if (window.accuracyCircle) map.removeLayer(window.accuracyCircle);
+    window.accuracyCircle = L.circle(e.latlng, radius, {fillOpacity: 0.1, weight: 1}).addTo(map);
+});
+
+map.on('locationerror', (e) => {
+    alert("Ni mogoče pridobiti lokacije: " + e.message);
+});
+
+function toggleGeolokacija() {
+    if (document.getElementById('check-lokacija').checked) {
+        // watch: true omogoča, da se pika premika, ko hodiš
+        map.locate({setView: true, maxZoom: 18, watch: true, enableHighAccuracy: true});
+    } else { 
+        map.stopLocate(); 
+        if(userMarker) map.removeLayer(userMarker); 
+        if(window.accuracyCircle) map.removeLayer(window.accuracyCircle);
+        userMarker = null; 
+    }
+}
+
+// 2. POPRAVEK ZA PARCELE (da bo notranjost klikljiva)
+function naloziParcele() {
+    if (!document.getElementById('check-parcele').checked || map.getZoom() < 17) {
+        parceleLayer.clearLayers(); 
+        if (fetchAbortController) fetchAbortController.abort();
+        return;
+    }
+
+    if (fetchAbortController) fetchAbortController.abort();
+    fetchAbortController = new AbortController();
+
+    const b = map.getBounds();
+    const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
+
+    fetch(url, { signal: fetchAbortController.signal })
+        .then(r => r.json())
+        .then(data => {
+            parceleLayer.clearLayers();
+            L.geoJSON(data, {
+                style: { 
+                    color: "white", 
+                    weight: 1.2, 
+                    fillColor: "white", // Dodana barva polnilu
+                    fillOpacity: 0.01   // Ključno: minimalna opasnost za registracijo klika!
+                },
+                onEachFeature: (f, l) => {
+                    const st = f.properties.ST_PARCELE || f.properties.st_parcele;
+                    const eid = f.properties.EID || f.properties.eid || f.properties.OST_EID || f.properties.ost_eid || '';
+                    
+                    l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
+                    
+                    l.on('click', (e) => { 
+                        L.DomEvent.stopPropagation(e); // Prepreči klik na točke spodaj
+                        fetchGursData(e.latlng, st, eid); 
+                    });
+                }
+            }).addTo(parceleLayer);
+        })
+        .catch(err => {
+            if (err.name !== 'AbortError') console.error("WFS Napaka:", err); 
+        });
+}
+
+// 3. DOPOLNJENA FUNKCIJA ZA MOJE TOCKE (dokončan tvoj odrezan del)
+function naloziMojeTocke() {
+    if (!document.getElementById('check-mojetocke').checked) {
+        mojeTockeLayer.clearLayers();
+        return;
+    }
+
+    Papa.parse(googleSheetsCsvUrl, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            mojeTockeLayer.clearLayers();
+            results.data.forEach(row => {
+                const koordinateStr = najdiVrednostStolpca(row, 'Koordinate Google maps');
+                if (koordinateStr && koordinateStr.includes(',')) {
+                    const parts = koordinateStr.split(',');
+                    const lat = parseFloat(parts[0].trim());
+                    const lng = parseFloat(parts[1].trim());
+
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        const marker = L.circleMarker([lat, lng], {
+                            radius: 6,
+                            fillColor: "#e74c3c",
+                            color: "#fff",
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+
+                        const postopek = najdiVrednostStolpca(row, 'Postopek');
+                        marker.bindPopup(`<b>${postopek}</b><br>${najdiVrednostStolpca(row, 'Investitorji')}`);
+                        marker.addTo(mojeTockeLayer);
+                    }
+                }
+            });
         }
-        .main-menu.collapsed { width: 45px; height: 45px; border-radius: 50%; }
-        .main-menu.collapsed .menu-content { display: none; }
-        .menu-header { display: flex; align-items: center; padding: 5px 10px; background: #f8f9fa; border-bottom: 1px solid #eee; cursor: pointer; }
-        #toggle-menu-btn { background: none; border: none; font-size: 24px; color: #2c3e50; }
-        
-        .menu-content { padding: 15px; }
-        .search-row { display: flex; margin-bottom: 12px; gap: 5px; }
-        #search-input { flex: 1; border: 1px solid #ddd; padding: 8px; border-radius: 6px; outline: none; }
-        #search-btn { background: #2c3e50; color: white; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; }
-
-        .row { display: flex; align-items: center; margin-bottom: 10px; font-size: 13px; cursor: pointer; }
-        .row input { margin-right: 10px; width: 18px; height: 18px; }
-
-        /* Stil za številke parcel */
-        .parcel-tooltip {
-            background: transparent !important; border: none !important; box-shadow: none !important;
-            color: white !important; font-size: 12px; font-weight: 900;
-            text-shadow: -1.2px -1.2px 0 #000, 1.2px -1.2px 0 #000, -1.2px 1.2px 0 #000, 1.2px 1.2px 0 #000;
-            pointer-events: none !important; 
+    });
+}
         }
 
         /* Info Okno */
@@ -1865,6 +1947,7 @@
 </script>
 </body>
 </html>
+
 
 
 
