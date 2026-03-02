@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GURS GIS Pregledovalnik v4 - Optimiziran</title>
+    <title>GURS GIS Pregledovalnik v4.1 - Optimiziran</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; background: #000; }
@@ -133,46 +133,62 @@
             document.body.removeChild(form);
         }
 
-        // --- GURS JAVNI VPOGLED (EID OBVOZ) ---
-        async function odpriGURS(koSifra, stParcele, znaniEid = null) {
+        // --- GURS JAVNI VPOGLED & REGISTER VREDNOTENJA (POPRAVLJEN EID OBVOZ) ---
+        async function odpriGURS(koSifra, stParcele, znaniEid, lat, lng, type) {
+            const baseUrl = type === 'RV' ? 'https://ipi.eprostor.gov.si/rv/' : 'https://ipi.eprostor.gov.si/jv/';
+
             // 1. Če smo EID prebrali že iz zemljevida (klik na mapo)
             if (znaniEid && znaniEid !== 'undefined' && znaniEid !== 'null' && znaniEid !== '') {
-                window.open(`https://ipi.eprostor.gov.si/jv/?eid=${znaniEid}`, '_blank');
+                window.open(`${baseUrl}?eid=${znaniEid}`, '_blank');
                 return;
             }
 
-            // 2. Če EID nimamo (klik iz Mojih Točk), prečistimo številko in pošljemo WFS poizvedbo
-            if (!koSifra || !stParcele || koSifra === '-' || stParcele === '-') {
-                alert("Podatki o KO ali parceli manjkajo!");
+            // 2. Če EID nimamo (klik iz Mojih Točk), uporabimo LAT/LNG in naredimo mikroskopski sken
+            if (!lat || !lng) {
+                alert("Brez koordinat ne morem pridobiti EID parcele.");
                 return;
-            }
-
-            let cistaParcela = stParcele.toString().trim();
-            if (cistaParcela.includes(' ')) {
-                cistaParcela = cistaParcela.split(' ').pop();
             }
 
             try {
-                // Poizvedba z uporabo CQL_FILTER
-                const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&cql_filter=KO_SIFRA=${koSifra}%20AND%20ST_PARCELE=%27${cistaParcela}%27`;
+                document.body.style.cursor = 'wait'; // Kazalec za nalaganje
+                const buffer = 0.00001; 
+                const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
+                
+                // Namesto tvegane CQL poizvedbe, preverimo s preizkušenim BBOX klicem
+                const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
                 
                 const res = await fetch(url);
                 const data = await res.json();
+                
+                document.body.style.cursor = 'default';
 
                 if (data && data.features && data.features.length > 0) {
-                    const props = data.features[0].properties;
-                    // Skriti interni GURS EID (iščemo pod različnimi ključi, ker se občasno spreminjajo)
+                    let cistaParcela = stParcele.toString().trim();
+                    if (cistaParcela.includes(' ')) cistaParcela = cistaParcela.split(' ').pop();
+
+                    // Preverimo, katera od najdenih parcel ima pravo številko (v primeru da jih je na tisti točki več)
+                    let matchedFeature = data.features[0]; 
+                    for(let f of data.features) {
+                        let st = f.properties.ST_PARCELE || f.properties.st_parcele || "";
+                        if (st.toString() === cistaParcela) {
+                            matchedFeature = f;
+                            break;
+                        }
+                    }
+
+                    const props = matchedFeature.properties;
                     const eid = props.EID || props.eid || props.OST_EID || props.ost_eid;
                     
                     if (eid) {
-                        window.open(`https://ipi.eprostor.gov.si/jv/?eid=${eid}`, '_blank');
+                        window.open(`${baseUrl}?eid=${eid}`, '_blank');
                     } else {
-                        alert("EID parcele ni bil najden v GURS bazi.");
+                        alert("EID parcele ni bil najden v GURS bazi na tej točki.");
                     }
                 } else {
-                    alert(`Parcele ${cistaParcela} v K.O. ${koSifra} ni bilo mogoče najti na GURS strežniku.`);
+                    alert(`GURS strežnik ni našel podatkov o parceli na teh koordinatah.`);
                 }
             } catch (error) {
+                document.body.style.cursor = 'default';
                 console.error("Napaka pri WFS poizvedbi za EID:", error);
                 alert("Napaka pri povezavi z GURS strežnikom. Preverite internetno povezavo.");
             }
@@ -221,15 +237,20 @@
                 document.getElementById("info-naslov").innerText = koSifra + " " + stParcele;
 
                 const zkButton = koSifra !== "----" ? `<button onclick="odpriZK('${koSifra}', '${stParcele}')" style="margin-top: 15px; padding: 10px; background: #c0392b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">📄 Prenesi ZK izpisek (PDF)</button>` : '';
-                // Dodan gumb GURS s podanim EID, ki smo ga ulovili zgoraj
-                const gursButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}')" style="margin-top: 5px; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">🌍 Prikaži v GURS (JV)</button>` : '';
+                
+                // JV in RV gumba za drseče okence
+                const gursJVButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}', null, null, 'JV')" style="flex:1; padding: 10px; background: #2980b9; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">🌍 GURS (JV)</button>` : '';
+                const gursRVButton = koSifra !== "----" ? `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid || ''}', null, null, 'RV')" style="flex:1; padding: 10px; background: #e67e22; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">💰 GURS (RV)</button>` : '';
 
                 document.getElementById("info-vsebina").innerHTML = `
                     <div class="mini-podatek"><span class="mini-label">Katastrska občina</span><span class="mini-val">${koIme}</span></div>
                     <div class="mini-podatek"><span class="mini-label">Občina</span><span class="mini-val">${obcina}</span></div>
                     <div class="mini-podatek"><span class="mini-label">Upravna enota</span><span class="mini-val">${ue}</span></div>
                     ${zkButton}
-                    ${gursButton}
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        ${gursJVButton}
+                        ${gursRVButton}
+                    </div>
                     <div style="margin-top:10px; font-size:10px; color:#ccc; text-align:center;">Vir podatkov: GURS e-prostor</div>
                 `;
             } catch (err) {
@@ -259,7 +280,7 @@
                         style: { color: "white", weight: 1.2, fillOpacity: 0 },
                         onEachFeature: (f, l) => {
                             const st = f.properties.ST_PARCELE || f.properties.st_parcele;
-                            // Preberemo EID in si ga shranimo ob izrisu!
+                            // Preberemo in shranimo EID že ob iskanju parcele!
                             const eid = f.properties.EID || f.properties.eid || f.properties.OST_EID || f.properties.ost_eid || '';
                             
                             l.bindTooltip(String(st), { permanent: true, className: 'parcel-tooltip', direction: 'center' });
@@ -301,7 +322,6 @@
         let mojeTockeLayer = L.layerGroup().addTo(map);
         const googleSheetsCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQGHIoNVspAhEHLg6i8jt7iXdY1dxiEOWkU1VMiUkkWAlOf42eTGR0KQmKDv16XG8nNOMNyrw_VkHwU/pub?gid=929707322&single=true&output=csv";
 
-        // Pomožna funkcija za iskanje vrednosti v vrstici, ignorira velike črke in presledke
         function najdiVrednostStolpca(row, iskanoIme) {
             const iskano = iskanoIme.toLowerCase().trim();
             for (let kljuc in row) {
@@ -358,8 +378,10 @@
                                 
                                 const isZkValid = (sifraKo !== '-' && sifraKo !== '' && parcelaInfo !== '-' && parcelaInfo !== '');
                                 const zkLink = `<a href="#" onclick="${isZkValid ? `odpriZK('${sifraKo}', '${parcelaInfo}');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #c0392b; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📄 ZK</a>`;
-                                // Dodan gumb GURS, ki uporablja WFS poizvedbo za pridobitev EID (zato nima podanega 3. argumenta)
-                                const gursLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2980b9; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🌍 GURS</a>`;
+                                
+                                // Dodana oba GURS gumba, predata LAT/LNG za natančno določanje EID
+                                const gursJvLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}', null, ${lat}, ${lng}, 'JV');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2980b9; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🌍 GURS (JV)</a>`;
+                                const gursRvLink = `<a href="#" onclick="${isZkValid ? `odpriGURS('${sifraKo}', '${parcelaInfo}', null, ${lat}, ${lng}, 'RV');` : 'alert(\'Manjka podatek o KO ali parceli!\');'} return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #e67e22; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">💰 GURS (RV)</a>`;
                                 
                                 const obiskanoText = (najdiVrednostStolpca(row, 'obiskano').toLowerCase() === 'da') 
                                     ? '<span style="color: #27ae60; font-weight: bold;">✓ Obiskano</span>' 
@@ -396,7 +418,8 @@
                                             ${onenoteLink}
                                             ${iobcinaLink}
                                             ${zkLink}
-                                            ${gursLink}
+                                            ${gursJvLink}
+                                            ${gursRvLink}
                                         </div>
                                     </div>
                                 `;
