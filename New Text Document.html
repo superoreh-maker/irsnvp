@@ -95,24 +95,21 @@
         function zapriInfoOkno() { document.getElementById("info-okno").style.bottom = "-600px"; }
         function toggleLabels() { document.getElementById('check-labels').checked ? labels.addTo(map) : map.removeLayer(labels); }
 
-        // --- SKRIPTA ZA GENERIRANJE ZK PDF ---
         function odpriZK(koSifra, stParcele) {
             if (!koSifra || !stParcele || koSifra === '-' || stParcele === '-') {
                 alert("Podatki o KO ali parceli manjkajo!");
                 return;
             }
 
-            // Očistimo številko parcele
             let cistaParcela = stParcele.toString().trim();
             if (cistaParcela.includes(' ')) {
                 cistaParcela = cistaParcela.split(' ').pop();
             }
 
-            // Dinamično ustvarimo skrito formo in jo pošljemo (POST) v novem zavihku
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = 'https://evlozisce.sodisce.si/evlozisce/javni_izpisi/03-001.html';
-            form.target = '_blank'; // Odpre v novem zavihku
+            form.target = '_blank';
 
             const params = {
                 'nacinList': 'IDZNAK',
@@ -249,10 +246,19 @@
             if (data.length > 0) map.setView([data[0].lat, data[0].lon], 19);
         }
 
-        // --- MOJE TOČKE (GOOGLE SHEETS LAYER) ---
         let mojeTockeLayer = L.layerGroup().addTo(map);
-        
         const googleSheetsCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQGHIoNVspAhEHLg6i8jt7iXdY1dxiEOWkU1VMiUkkWAlOf42eTGR0KQmKDv16XG8nNOMNyrw_VkHwU/pub?gid=929707322&single=true&output=csv";
+
+        // Pomožna funkcija za iskanje vrednosti v vrstici, ignorira velike črke in presledke
+        function najdiVrednostStolpca(row, iskanoIme) {
+            const iskano = iskanoIme.toLowerCase().trim();
+            for (let kljuc in row) {
+                if (kljuc.toLowerCase().trim() === iskano) {
+                    return row[kljuc] ? row[kljuc].trim() : '';
+                }
+            }
+            return '';
+        }
 
         function naloziMojeTocke() {
             mojeTockeLayer.clearLayers(); 
@@ -263,7 +269,7 @@
                 skipEmptyLines: true, 
                 complete: function(results) {
                     results.data.forEach(row => {
-                        const koordinateStr = row['Koordinate Google maps'];
+                        const koordinateStr = najdiVrednostStolpca(row, 'Koordinate Google maps');
                         
                         if (koordinateStr && koordinateStr.includes(',')) {
                             const parts = koordinateStr.split(',');
@@ -272,32 +278,37 @@
                             
                             if (!isNaN(lat) && !isNaN(lng)) {
                                 
-                                const postopek = row['Postopek'] || 'Št. postopka';
-                                const naziv = row['Naziv'] || 'Neznan naziv';
-                                const idUa = row['ID UA'] || '-';
-                                const upravniOrgan = row['Upravni organ'] || '-';
-                                const obcina = row['Občina'] || '-';
-                                const investitor = row['Investitorji'] || '-';
-                                const stZadeve = row['Št. zadeve'] || '-';
-                                const datumIzd = row['Datum izd.'] || '-';
-                                const datPrav = row['Dat. prav.'] || '-';
-                                const zacetekGradnje = row['Datum prij. zač. grad.'] || '-';
-                                const status = row['Način rešitve'] || '-';
-                                const imeKo = row['Ime KO'] || '-';
-                                const sifraKo = row['Šifra KO'] || '-';
-                                const parcelaInfo = row['KO + parcela'] || '-';
+                                const postopek = najdiVrednostStolpca(row, 'Postopek') || 'Št. postopka';
+                                const naziv = najdiVrednostStolpca(row, 'Naziv') || 'Neznan naziv';
+                                const idUa = najdiVrednostStolpca(row, 'ID UA') || '-';
+                                const upravniOrgan = najdiVrednostStolpca(row, 'Upravni organ') || '-';
+                                const obcina = najdiVrednostStolpca(row, 'Občina') || '-';
+                                const investitor = najdiVrednostStolpca(row, 'Investitorji') || '-';
+                                const stZadeve = najdiVrednostStolpca(row, 'Št. zadeve') || '-';
+                                const datumIzd = najdiVrednostStolpca(row, 'Datum izd.') || '-';
+                                const datPrav = najdiVrednostStolpca(row, 'Dat. prav.') || '-';
+                                const zacetekGradnje = najdiVrednostStolpca(row, 'Datum prij. zač. grad.') || '-';
+                                const status = najdiVrednostStolpca(row, 'Način rešitve') || '-';
+                                const imeKo = najdiVrednostStolpca(row, 'Ime KO') || '-';
+                                const sifraKo = najdiVrednostStolpca(row, 'Šifra KO') || '-';
+                                const parcelaInfo = najdiVrednostStolpca(row, 'KO + parcela') || '-';
                                 
-                                const pisLink = row['PIS'] ? `<a href="${row['PIS']}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #3498db; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 PIS</a>` : '';
-                                const fotoLink = row['FOTO'] ? `<a href="${row['FOTO']}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2ecc71; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📷 FOTO</a>` : '';
-                                // OneDrive prevzame FOTO link
-                                const onedriveLink = row['FOTO'] ? `<a href="${row['FOTO']}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #0078D4; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">☁️ OneDrive</a>` : '';
-                                // OneNote prevzame link iz stolpca OneNote
-                                const onenoteLink = row['OneNote'] ? `<a href="${row['OneNote']}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #7719AA; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📓 OneNote</a>` : '';
-                                const iobcinaLink = row['iobcina'] ? `<a href="${row['iobcina']}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #9b59b6; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🗺️ iObčina</a>` : '';
+                                // Povezave izvlečene z varno funkcijo
+                                const pisUrl = najdiVrednostStolpca(row, 'PIS');
+                                const fotoUrl = najdiVrednostStolpca(row, 'FOTO');
+                                const onenoteUrl = najdiVrednostStolpca(row, 'OneNote');
+                                const iobcinaUrl = najdiVrednostStolpca(row, 'iobcina');
+                                
+                                // Generiranje gumbov (samo, če URL obstaja in ni prazen)
+                                const pisLink = pisUrl ? `<a href="${pisUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #3498db; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🔗 PIS</a>` : '';
+                                const fotoLink = fotoUrl ? `<a href="${fotoUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #2ecc71; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📷 FOTO</a>` : '';
+                                const onedriveLink = fotoUrl ? `<a href="${fotoUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #0078D4; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">☁️ OneDrive</a>` : '';
+                                const onenoteLink = onenoteUrl ? `<a href="${onenoteUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #7719AA; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📓 OneNote</a>` : '';
+                                const iobcinaLink = iobcinaUrl ? `<a href="${iobcinaUrl}" target="_blank" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #9b59b6; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">🗺️ iObčina</a>` : '';
                                 
                                 const zkLink = (sifraKo !== '-' && parcelaInfo !== '-') ? `<a href="#" onclick="odpriZK('${sifraKo}', '${parcelaInfo}'); return false;" style="display:inline-block; margin-top:5px; padding: 4px 8px; background: #c0392b; color: white; border-radius: 4px; text-decoration:none; font-size: 11px;">📄 ZK</a>` : '';
                                 
-                                const obiskanoText = (row['obiskano'] && row['obiskano'].toLowerCase().trim() === 'da') 
+                                const obiskanoText = (najdiVrednostStolpca(row, 'obiskano').toLowerCase() === 'da') 
                                     ? '<span style="color: #27ae60; font-weight: bold;">✓ Obiskano</span>' 
                                     : '<span style="color: #e74c3c; font-weight: bold;">✗ Še ni obiskano</span>';
 
@@ -357,7 +368,6 @@
             }
         }
 
-        // Klic ob zagonu
         naloziMojeTocke();
         toggleGeolokacija();
     </script>
