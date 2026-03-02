@@ -40,7 +40,7 @@
         #info-okno {
             position: absolute; bottom: -600px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 380px; background: white; border-radius: 15px 15px 0 0;
-            box-shadow: 0px -5px 25px rgba(0,0,0,0.4); z-index: 2000; padding: 15px; /* Manjši padding */
+            box-shadow: 0px -5px 25px rgba(0,0,0,0.4); z-index: 2000; padding: 15px;
             transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); border-top: 5px solid #e67e22;
         }
         .info-grid {
@@ -57,7 +57,7 @@
 <div id="main-menu" class="main-menu collapsed">
     <div class="menu-header" onclick="toggleMenu()">
             <button id="toggle-menu-btn">☰</button>
-            <span style="font-size:14px; font-weight:bold; margin-left:10px;">IRSNVP Pregledovalnik v4.3</span>
+            <span style="font-size:14px; font-weight:bold; margin-left:10px;">GURS Pregledovalnik v4</span>
         </div>
         <div class="menu-content">
             <div class="search-row">
@@ -202,11 +202,19 @@
                     fetch(rpeBase + "&typeName=SI.GURS.RPE:POSTNI_OKOLISI").then(r => r.json())
                 ]);
 
+                // POPRAVLJENO PRIDOBIVANJE IMEN IN POŠTNIH ŠTEVILK
                 const extractName = (settledRes) => {
                     if (settledRes.status === "fulfilled" && settledRes.value.features?.length > 0) {
                         const props = settledRes.value.features[0].properties;
-                        // Posebna obravnava za pošto
-                        if (props.POSTNA_STEVILKA && props.IME_POSTE) return props.POSTNA_STEVILKA + " " + props.IME_POSTE;
+                        
+                        // Preverimo, ali podatki pripadajo poštni poizvedbi (iskanje značilnih atributov)
+                        if ('PO_ID' in props || 'POSTNA_STEVILKA' in props || 'IME_POSTE' in props) {
+                            const pSt = props.POSTNA_STEVILKA || props.PO_ID || props.POSTA_ID || "";
+                            const pIme = props.IME_POSTE || props.NAZIV_POSTE || props.IME || "";
+                            return `${pSt} ${pIme}`.trim();
+                        }
+
+                        // Splošen fallback za ostale registre (KO, Občine, UE, Naselja)
                         return props.UIME || props.IME || props.NAZIV || props.NAZIV_KO || 
                                Object.values(props).find(v => typeof v === 'string' && v.length > 2) || "Ni najdeno";
                     }
@@ -307,8 +315,8 @@
             } else { map.stopLocate(); if(userMarker) map.removeLayer(userMarker); userMarker = null; }
         }
 
-        // --- PAMETNO ISKANJE (Naslov, Parcela, Stavba) ---
-        async function isciNaslov() {
+        // --- POPRAVLJENO PAMETNO ISKANJE (Naslov, Parcela, Stavba) ---
+async function isciNaslov() {
             const q = document.getElementById('search-input').value.trim();
             if (!q) return;
 
@@ -323,46 +331,64 @@
                 if (parcelMatch) {
                     const ko = parcelMatch[1];
                     const parcela = parcelMatch[2];
-                    const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&cql_filter=KO_SIFRA=${ko}%20AND%20ST_PARCELE=%27${parcela}%27`;
+                    const filter = encodeURIComponent(`KO_ID=${ko} AND ST_PARCELE='${parcela}'`);
+                    // DODANO: &srsName=EPSG:4326
+                    const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&cql_filter=${filter}`;
                     
                     const res = await fetch(url);
-                    const data = await res.json();
+                    const text = await res.text();
                     
-                    if (data && data.features && data.features.length > 0) {
-                        const tempLayer = L.geoJSON(data);
-                        map.fitBounds(tempLayer.getBounds(), { maxZoom: 19 });
-                        document.body.style.cursor = 'default';
-                        return; // Zaključimo, saj smo našli parcelo
+                    try {
+                        const data = JSON.parse(text);
+                        if (data && data.features && data.features.length > 0) {
+                            const tempLayer = L.geoJSON(data);
+                            map.fitBounds(tempLayer.getBounds(), { maxZoom: 19 });
+                            document.body.style.cursor = 'default';
+                            return;
+                        } else {
+                            alert("Parcela ni bila najdena v tej katastrski občini.");
+                        }
+                    } catch (e) {
+                        console.error("GURS ni vrnil JSON formata. Strežnik pravi:", text);
+                        alert("Napaka pri poizvedovanju parcele (verjetno napačen format ali KO).");
                     }
                 } else if (buildMatch) {
                     const ko = buildMatch[1];
                     const stavba = buildMatch[2];
-                    // Običajno se pri GURS KN uporablja ST_STAVBE ali STEVILKA_STAVBE
-                    const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:STAVBE&outputFormat=application/json&cql_filter=KO_SIFRA=${ko}%20AND%20ST_STAVBE=${stavba}`;
+                    const filter = encodeURIComponent(`KO_ID=${ko} AND ST_STAVBE=${stavba}`);
+                    // DODANO: &srsName=EPSG:4326
+                    const url = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:STAVBE&outputFormat=application/json&srsName=EPSG:4326&cql_filter=${filter}`;
                     
                     const res = await fetch(url);
-                    const data = await res.json();
-
-                    if (data && data.features && data.features.length > 0) {
-                        const tempLayer = L.geoJSON(data);
-                        map.fitBounds(tempLayer.getBounds(), { maxZoom: 19 });
-                        document.body.style.cursor = 'default';
-                        return; // Zaključimo, saj smo našli stavbo
+                    const text = await res.text();
+                    try {
+                        const data = JSON.parse(text);
+                        if (data && data.features && data.features.length > 0) {
+                            const tempLayer = L.geoJSON(data);
+                            map.fitBounds(tempLayer.getBounds(), { maxZoom: 19 });
+                            document.body.style.cursor = 'default';
+                            return;
+                        } else {
+                            alert("Stavba ni bila najdena v tej katastrski občini.");
+                        }
+                    } catch (e) {
+                        console.error("GURS ni vrnil JSON formata. Strežnik pravi:", text);
+                        alert("Napaka pri poizvedovanju stavbe.");
                     }
-                }
-
-                // Če iskanje ni bilo številčno (ali pa nismo našli parcele/stavbe), iščemo običajen naslov (Nominatim)
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=si`);
-                const data = await res.json();
-                
-                if (data.length > 0) {
-                    map.setView([data[0].lat, data[0].lon], 19);
                 } else {
-                    alert("Lokacija, parcela ali stavba ni bila najdena.");
+                    // Iskanje običajnega naslova (Nominatim)
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=si`);
+                    const data = await res.json();
+                    
+                    if (data.length > 0) {
+                        map.setView([data[0].lat, data[0].lon], 19);
+                    } else {
+                        alert("Lokacija, parcela ali stavba ni bila najdena.");
+                    }
                 }
             } catch (err) {
                 console.error("Napaka pri iskanju:", err);
-                alert("Napaka pri povezavi s strežnikom.");
+                alert("Napaka pri povezavi s strežnikom (omrežje).");
             }
             document.body.style.cursor = 'default';
         }
