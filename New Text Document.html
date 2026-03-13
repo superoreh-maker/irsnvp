@@ -28,17 +28,17 @@
         .parcel-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; color: white !important; font-size: 14px; font-weight: normal; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 4px #000; pointer-events: none !important; margin:0; padding:0; }
         .orange-tooltip { color: #f39c12 !important; font-weight: normal !important; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 4px #000 !important; z-index: 1000 !important; }
         
-        /* NOVO: Spodnje okno za mobilne naprave */
+        /* Spodnje okno za mobilne naprave */
         #bottom-panel { position: fixed; bottom: 0; left: 0; width: 100%; max-height: 50vh; background: white; z-index: 9999; display: none; overflow-y: auto; padding: 15px; box-sizing: border-box; border-top-left-radius: 15px; border-top-right-radius: 15px; box-shadow: 0 -5px 25px rgba(0,0,0,0.3); font-family: 'Segoe UI', sans-serif; }
         #zapri-btn { float: right; background: none; border: none; font-size: 22px; font-weight: bold; color: #7f8c8d; cursor: pointer; padding: 0 5px; margin-bottom: 10px; }
         
-        /* Oblikovanje tabele in gumbov za telefon */
+        /* Oblikovanje tabele in gumbov */
         .mobile-table { width: 100%; border-collapse: collapse; font-size: 14px; }
         .mobile-table th, .mobile-table td { border-bottom: 1px solid #eee; padding: 6px 2px; line-height: 1.3; }
         .mobile-table th { text-align: left; color: #7f8c8d; font-weight: normal; width: 40%; vertical-align:top; }
         .mobile-table td { color: #2c3e50; font-weight: bold; }
         
-        .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; }
+        .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; padding-bottom: 10px; }
         .action-btn { display:flex; align-items:center; justify-content:center; text-align:center; padding:10px; color:white !important; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px; text-decoration:none; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .action-btn:active { opacity: 0.8; transform: translateY(1px); }
     </style>
@@ -96,7 +96,7 @@
     function escapeHtml(unsafe) { return unsafe ? unsafe.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;") : ""; }
     function toggleUlice() { document.getElementById('check-ulice').checked ? labels.addTo(map) : map.removeLayer(labels); }
     
-    // GUMB ZA OSVEŽEVANJE LOKACIJE
+    // GUMB ZA OSVEŽEVANJE LOKACIJE (Brez spreminjanja zooma)
     let locControl = L.control({position: 'bottomleft'});
     locControl.onAdd = function() { 
         let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control'); 
@@ -110,14 +110,25 @@
         if(e) e.preventDefault(); isLocating = !isLocating;
         if (isLocating) { 
             document.getElementById('loc-btn-icon').style.backgroundColor = '#ecf0f1'; 
-            map.locate({setView: true, maxZoom: 19, watch: true, enableHighAccuracy: true}); 
+            // setView: false prepreči spreminjanje zooma, mapo centriramo ročno
+            map.locate({setView: false, watch: true, enableHighAccuracy: true}); 
         } else { 
             document.getElementById('loc-btn-icon').style.backgroundColor = '#fff'; 
             map.stopLocate(); 
             if(userMarker) { map.removeLayer(userMarker); userMarker = null; } 
         }
     };
-    map.on('locationfound', function(e) { if (!userMarker) { userMarker = L.circleMarker(e.latlng, {radius:8, color:'white', fillColor:'#3498db', fillOpacity:1, weight:2, zIndexOffset: 2000}).addTo(map); } else { userMarker.setLatLng(e.latlng); } });
+    
+    map.on('locationfound', function(e) { 
+        if (!userMarker) { 
+            userMarker = L.circleMarker(e.latlng, {radius:8, color:'white', fillColor:'#3498db', fillOpacity:1, weight:2, zIndexOffset: 2000}).addTo(map); 
+            map.setView(e.latlng, map.getZoom()); // Ohrani trenutni zoom
+        } else { 
+            userMarker.setLatLng(e.latlng); 
+            map.setView(e.latlng, map.getZoom()); // Ohrani trenutni zoom
+        } 
+    });
+    
     map.on('locationerror', function(e) { alert("Nisem mogel pridobiti lokacije."); document.getElementById('loc-btn-icon').style.backgroundColor = '#fff'; isLocating = false; });
 
     // Zunanji linki GURS in ZK
@@ -153,19 +164,20 @@
         } catch (e) { document.body.style.cursor = 'default'; alert("Napaka pri GURS."); }
     }
 
-    // ZGARDNJA VSEBINE SPODNJEGA OKNA (PODATKI ZGORAJ, GUMBI SPODAJ)
+    // ZGRADNJA VSEBINE SPODNJEGA OKNA (PODATKI ZGORAJ, GUMBI SPODAJ)
     function zgradiHTML(z) {
         let parcClean = z.gurs_parcela_raw.replace(/[']/g, '');
         let coords = z.coords;
         let id_ua_first = z.gds.length > 0 ? z.gds[0].id : 'BrezID';
         let vneseni_pis = z.gds.length > 0 && z.gds[0].pis ? z.gds[0].pis : null;
 
-        let google_maps_link = `<a href="http://googleusercontent.com/maps.google.com/dir/?api=1&destination=${coords[0]},${coords[1]}" target="_blank" class="action-btn" style="background:#34495e;">🧭 Google Maps</a>`;
+        // Gumbi
+        let google_maps_link = `<a href="https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}&travelmode=driving" target="_blank" class="action-btn" style="background:#34495e;">🧭 Google Maps</a>`;
         let zk_btn = `<button onclick="odpriZK('${z.sifra_ko}', '${parcClean}')" class="action-btn" style="background:#c0392b;">📄 ZK izpisek</button>`;
         let jv_btn = `<button onclick="odpriGURS('${z.sifra_ko}', '${parcClean}', '', ${coords[0]}, ${coords[1]}, 'JV')" class="action-btn" style="background:#2980b9;">🌍 GURS (JV)</button>`;
         let rv_btn = `<button onclick="odpriGURS('${z.sifra_ko}', '${parcClean}', '', ${coords[0]}, ${coords[1]}, 'RV')" class="action-btn" style="background:#e67e22;">💰 GURS (RV)</button>`;
         
-        let iobcina_link = z.gds.length > 0 && z.gds[0].iobcina ? `<a href="${z.gds[0].iobcina}" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>` : '';
+        let iobcina_link = z.gds.length > 0 && z.gds[0].iobcina ? `<a href="${z.gds[0].iobcina}" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>` : `<a href="https://gis.iobcina.si/gisapp/" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>`;
         let pis_link = vneseni_pis ? `<a href="${vneseni_pis}" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>` : 
             (id_ua_first.toLowerCase() !== 'brezid' ? `<a href="https://pis.eprostor.sigov.si/pis-ua/upravni-akt.html?id=${id_ua_first}" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>` : `<a href="https://pis.eprostor.sigov.si/pis-javni-vpogled/" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>`);
 
@@ -202,12 +214,12 @@
         document.getElementById("bottom-vsebina").innerHTML = `<h4 style="color:#f39c12; text-align:center;">Pridobivam GURS podatke za parcelo ${stParcele}... ⏳</h4>`;
         document.getElementById('bottom-panel').style.display = 'block';
         
-        let gmap_link = `<a href="http://googleusercontent.com/maps.google.com/dir/?api=1&destination=${latlng.lat},${latlng.lng}" target="_blank" class="action-btn" style="background:#34495e;">🧭 Google Maps</a>`;
+        let gmap_link = `<a href="https://www.google.com/maps/dir/?api=1&destination=${latlng.lat},${latlng.lng}&travelmode=driving" target="_blank" class="action-btn" style="background:#34495e;">🧭 Google Maps</a>`;
         let zk_btn = `<button onclick="odpriZK('${koSifra}', '${stParcele}')" class="action-btn" style="background:#c0392b;">📄 ZK izpisek</button>`;
         let jv_btn = `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid||''}', ${latlng.lat}, ${latlng.lng}, 'JV')" class="action-btn" style="background:#2980b9;">🌍 GURS (JV)</button>`;
         let rv_btn = `<button onclick="odpriGURS('${koSifra}', '${stParcele}', '${eid||''}', ${latlng.lat}, ${latlng.lng}, 'RV')" class="action-btn" style="background:#e67e22;">💰 GURS (RV)</button>`;
-        let btn_grid = `<div class="button-grid">${gmap_link}${koSifra !== 'Neznano' ? zk_btn : ''}${jv_btn}${rv_btn}</div>`;
-
+        let pis_link = `<a href="https://pis.eprostor.sigov.si/pis-javni-vpogled/" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>`;
+        
         const b = 0.00001; const bbox = `${latlng.lng-b},${latlng.lat-b},${latlng.lng+b},${latlng.lat+b}`;
         const rpe = `https://ipi.eprostor.gov.si/wfs-si-gurs-rpe/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
         const kn = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn-osnovni/wfs?service=WFS&version=1.1.0&request=GetFeature&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
@@ -230,6 +242,15 @@
             
             const koIme = extName(rKO); const obcina = extName(rObc); const ue = extName(rUE); const naselje = extName(rNas); const posta = extName(rPosta, true);
             
+            // Pametno ustvarjanje iObčina linka iz pridobljene občine
+            let obcClean = obcina.replace(/[\s\-]/g, '').replace(/š/g, 's').replace(/č/g, 'c').replace(/ž/g, 'z').replace(/Š/g, 'S').replace(/Č/g, 'C').replace(/Ž/g, 'Z').toLowerCase();
+            let parcClean = stParcele.toString().replace(/[']/g, '');
+            let iobcina_link = obcClean !== 'ninajdeno' && obcClean !== '-' ? 
+                `<a href="https://gis.iobcina.si/gisapp/?a=${obcClean}&PARC=${koSifra}:${parcClean}" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>` : 
+                `<a href="https://gis.iobcina.si/gisapp/" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>`;
+
+            let btn_grid = `<div class="button-grid">${gmap_link}${zk_btn}${jv_btn}${rv_btn}${iobcina_link}${pis_link}</div>`;
+
             let html = `
                 <h3 style="margin-top:0; color:#95a5a6; border-bottom: 2px solid #95a5a6; padding-bottom:8px; font-size:18px;">Izbrana parcela: ${koSifra !== 'Neznano' ? koSifra : ''} ${stParcele}</h3>
                 <div style="margin-bottom:15px;">
@@ -245,7 +266,9 @@
             `;
             document.getElementById("bottom-vsebina").innerHTML = html;
         } catch(e) { 
-            document.getElementById("bottom-vsebina").innerHTML = `<h3 style="color:#e74c3c;">Napaka pri pridobivanju podatkov.</h3>${btn_grid}`; 
+            let obcFallback = `<a href="https://gis.iobcina.si/gisapp/" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>`;
+            let fall_grid = `<div class="button-grid">${gmap_link}${zk_btn}${jv_btn}${rv_btn}${obcFallback}${pis_link}</div>`;
+            document.getElementById("bottom-vsebina").innerHTML = `<h3 style="color:#e74c3c;">Napaka pri pridobivanju podatkov.</h3>${fall_grid}`; 
         }
     }
 
@@ -260,7 +283,6 @@
             let marker = L.marker(z.coords, {icon: icon});
             z.layer_gd = marker;
             
-            // KLIK ODPRE SPODNJE OKNO (ni več float popup-a)
             marker.on('click', function(e) { L.DomEvent.stopPropagation(e); odpriSpodnjeOkno(index, uId); });
             marker.addTo(markerLayer);
         }
@@ -360,7 +382,6 @@
                         
                         let zIndex = zadeveData.findIndex(z => (z.sifra_ko + "_" + z.gurs_parcela_raw.replace(/[\s\/\*-]/g, '')) === uniqueId);
                         
-                        // KLIK NA PARCELO: Če ima GD ga odpre, sicer potegne podatke v živo iz GURS
                         if (zIndex !== -1) { odpriSpodnjeOkno(zIndex, uniqueId); } 
                         else { fetchGursDataLive(e.latlng, st, eid, koSifra); }
                     });
