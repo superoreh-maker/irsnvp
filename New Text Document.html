@@ -62,8 +62,10 @@
         <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
         <select id="flt-nacin" class="filter-select" onchange="applyFilters()"><option value="">Vsi načini rešitve</option><option value="0">0</option><option value="POSTOPEK USTAVLJEN">POSTOPEK USTAVLJEN</option><option value="UPRAVNI SPOR">UPRAVNI SPOR</option><option value="ZAHTEVA ZAVRNJENA">ZAHTEVA ZAVRNJENA</option><option value="ZAHTEVA ZAVRŽENA">ZAHTEVA ZAVRŽENA</option><option value="ZAHTEVI UGODENO">ZAHTEVI UGODENO</option></select>
         <select id="flt-leto" class="filter-select" onchange="applyFilters()"><option value="">Vsa leta izdaje</option><option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option></select>
+        <select id="flt-ccsi" class="filter-select" onchange="applyFilters()"><option value="">Vse CC-SI klasifikacije</option></select>
+        <select id="flt-vrsta" class="filter-select" onchange="applyFilters()"><option value="">Vse vrste objektov</option></select>
         <label class="row-chk"><input type="checkbox" id="flt-nezahtevni" onchange="applyFilters()"> 🚫 Izloči nezahtevne objekte</label>
-        <label class="row-chk" title="ON = Prazno ali 1900"><input type="checkbox" id="flt-pzg" onchange="applyFilters()"> 📅 Ni prijave začetka gradnje</label>
+        <label class="row-chk" title="Pokaže samo tiste parcele, kjer NIKJER ni prijave gradnje."><input type="checkbox" id="flt-pzg" onchange="applyFilters()"> 📅 Ni prijave začetka gradnje</label>
     </div>
 </div>
 
@@ -91,12 +93,23 @@
     let parceleLayer = L.layerGroup().addTo(map);
     let markerLayer = L.layerGroup().addTo(map);
     let userMarker = null; let mapMoveTimeout = null; let fetchAbortController = null;
-    let targetParcelsOrange = []; let selectedParcelSt = null; let geoJsonLayer = null;
+    let targetParcelsOrange = []; 
+    let selectedParcelSt = null; let geoJsonLayer = null;
 
-    function escapeHtml(unsafe) { return unsafe ? unsafe.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;") : ""; }
+    // POPRAVLJENA IN VARNA FUNKCIJA
+    function escapeHtml(unsafe) { 
+        if (!unsafe) return "";
+        return unsafe.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     function toggleUlice() { document.getElementById('check-ulice').checked ? labels.addTo(map) : map.removeLayer(labels); }
     
-    // GUMB ZA OSVEŽEVANJE LOKACIJE (Brez spreminjanja zooma)
+    // GUMB ZA OSVEŽEVANJE LOKACIJE
     let locControl = L.control({position: 'bottomleft'});
     locControl.onAdd = function() { 
         let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control'); 
@@ -110,7 +123,6 @@
         if(e) e.preventDefault(); isLocating = !isLocating;
         if (isLocating) { 
             document.getElementById('loc-btn-icon').style.backgroundColor = '#ecf0f1'; 
-            // setView: false prepreči spreminjanje zooma, mapo centriramo ročno
             map.locate({setView: false, watch: true, enableHighAccuracy: true}); 
         } else { 
             document.getElementById('loc-btn-icon').style.backgroundColor = '#fff'; 
@@ -122,10 +134,10 @@
     map.on('locationfound', function(e) { 
         if (!userMarker) { 
             userMarker = L.circleMarker(e.latlng, {radius:8, color:'white', fillColor:'#3498db', fillOpacity:1, weight:2, zIndexOffset: 2000}).addTo(map); 
-            map.setView(e.latlng, map.getZoom()); // Ohrani trenutni zoom
+            map.setView(e.latlng, map.getZoom()); 
         } else { 
             userMarker.setLatLng(e.latlng); 
-            map.setView(e.latlng, map.getZoom()); // Ohrani trenutni zoom
+            map.setView(e.latlng, map.getZoom()); 
         } 
     });
     
@@ -164,19 +176,16 @@
         } catch (e) { document.body.style.cursor = 'default'; alert("Napaka pri GURS."); }
     }
 
-    // ZGRADNJA VSEBINE SPODNJEGA OKNA (PODATKI ZGORAJ, GUMBI SPODAJ)
     function zgradiHTML(z) {
         let parcClean = z.gurs_parcela_raw.replace(/[']/g, '');
         let coords = z.coords;
         let id_ua_first = z.gds.length > 0 ? z.gds[0].id : 'BrezID';
         let vneseni_pis = z.gds.length > 0 && z.gds[0].pis ? z.gds[0].pis : null;
 
-        // Gumbi
         let google_maps_link = `<a href="https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}&travelmode=driving" target="_blank" class="action-btn" style="background:#34495e;">🧭 Google Maps</a>`;
         let zk_btn = `<button onclick="odpriZK('${z.sifra_ko}', '${parcClean}')" class="action-btn" style="background:#c0392b;">📄 ZK izpisek</button>`;
         let jv_btn = `<button onclick="odpriGURS('${z.sifra_ko}', '${parcClean}', '', ${coords[0]}, ${coords[1]}, 'JV')" class="action-btn" style="background:#2980b9;">🌍 GURS (JV)</button>`;
         let rv_btn = `<button onclick="odpriGURS('${z.sifra_ko}', '${parcClean}', '', ${coords[0]}, ${coords[1]}, 'RV')" class="action-btn" style="background:#e67e22;">💰 GURS (RV)</button>`;
-        
         let iobcina_link = z.gds.length > 0 && z.gds[0].iobcina ? `<a href="${z.gds[0].iobcina}" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>` : `<a href="https://gis.iobcina.si/gisapp/" target="_blank" class="action-btn" style="background:#9b59b6;">🗺️ iObčina</a>`;
         let pis_link = vneseni_pis ? `<a href="${vneseni_pis}" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>` : 
             (id_ua_first.toLowerCase() !== 'brezid' ? `<a href="https://pis.eprostor.sigov.si/pis-ua/upravni-akt.html?id=${id_ua_first}" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>` : `<a href="https://pis.eprostor.sigov.si/pis-javni-vpogled/" target="_blank" class="action-btn" style="background:#16a085;">🏛️ PIS</a>`);
@@ -188,7 +197,15 @@
             z.gds.forEach((gd, idx) => {
                 let trs = "";
                 for (const [k, v] of Object.entries(gd.row_data)) { 
-                    trs += `<tr><th>${escapeHtml(k)}:</th><td>${escapeHtml(v)}</td></tr>`; 
+                    let displayVal = escapeHtml(v);
+                    if (k === 'Datum prij. zač. grad.') {
+                        if (v.includes('1900') || v.trim() === '') {
+                            displayVal = '<span style="color:#e74c3c; font-weight:bold; font-size:16px;">❌</span>';
+                        } else {
+                            displayVal = `<span style="color:#27ae60; font-weight:bold; font-size:16px;">${escapeHtml(v)} ✅</span>`;
+                        }
+                    }
+                    trs += `<tr><th>${escapeHtml(k)}:</th><td>${displayVal}</td></tr>`; 
                 }
                 gd_vrstice_html += `<div style="margin-bottom:15px;"><h4 style="margin:0 0 10px 0; color:#d35400;">Javni podatki dovoljenja ${idx+1} (ID: ${escapeHtml(gd.id)})</h4><table class="mobile-table">${trs}</table></div>`;
             });
@@ -209,7 +226,6 @@
         if (geoJsonLayer) geoJsonLayer.setStyle(getParcelStyle); 
     }
 
-    // Pridobivanje GURS podatkov v živo za prazne parcele
     async function fetchGursDataLive(latlng, stParcele, eid, koSifra) {
         document.getElementById("bottom-vsebina").innerHTML = `<h4 style="color:#f39c12; text-align:center;">Pridobivam GURS podatke za parcelo ${stParcele}... ⏳</h4>`;
         document.getElementById('bottom-panel').style.display = 'block';
@@ -242,7 +258,6 @@
             
             const koIme = extName(rKO); const obcina = extName(rObc); const ue = extName(rUE); const naselje = extName(rNas); const posta = extName(rPosta, true);
             
-            // Pametno ustvarjanje iObčina linka iz pridobljene občine
             let obcClean = obcina.replace(/[\s\-]/g, '').replace(/š/g, 's').replace(/č/g, 'c').replace(/ž/g, 'z').replace(/Š/g, 'S').replace(/Č/g, 'C').replace(/Ž/g, 'Z').toLowerCase();
             let parcClean = stParcele.toString().replace(/[']/g, '');
             let iobcina_link = obcClean !== 'ninajdeno' && obcClean !== '-' ? 
@@ -272,19 +287,16 @@
         }
     }
 
+    // Prvotna inicializacija markerjev, HTML jim dodelimo kasneje v applyFilters()
     zadeveData.forEach((z, index) => {
         z.layer_gd = null;
         let uId = z.sifra_ko + "_" + z.gurs_parcela_raw.replace(/[\s\/\*-]/g, '');
 
         if (z.gds.length > 0) {
-            let stackHtml = new Array(z.gds.length).fill("GD").join("<br>");
-            let icon = L.divIcon({html: `<div style="position:absolute; top:-10px; left:-10px; background:rgba(243, 156, 18, 0.95); color:white; font-weight:bold; font-size:11px; border-radius:4px; padding:2px 4px; text-align:center; border:1px solid #d68910; pointer-events:auto; cursor:pointer;">${stackHtml}</div>`, className: 'dummy-class'});
-            
-            let marker = L.marker(z.coords, {icon: icon});
+            let marker = L.marker(z.coords, {icon: L.divIcon({className: 'dummy-class'})});
             z.layer_gd = marker;
-            
             marker.on('click', function(e) { L.DomEvent.stopPropagation(e); odpriSpodnjeOkno(index, uId); });
-            marker.addTo(markerLayer);
+            // Dodali ga bomo v applyFilters
         }
     });
 
@@ -292,36 +304,76 @@
         let valSearch = document.getElementById('search-input').value.toLowerCase().trim().replace(/[\s\/\*-]/g, '');
         let exclNezahtevne = document.getElementById('flt-nezahtevni').checked;
         let fltPzg = document.getElementById('flt-pzg').checked;
+        
         let valNacin = document.getElementById('flt-nacin').value;
         let valLeto = document.getElementById('flt-leto').value;
+        let valCcsi = document.getElementById('flt-ccsi').value;
+        let valVrsta = document.getElementById('flt-vrsta').value;
+        
         let showGd = document.getElementById('check-gd').checked;
 
         targetParcelsOrange = [];
 
-        zadeveData.forEach((z) => {
+        zadeveData.forEach((z, index) => {
             let iskani = z.iskani_nizi ? z.iskani_nizi.join(" ").replace(/[\s\/\*-]/g, '') : "";
             let matchSearch = (!valSearch || iskani.includes(valSearch));
             
-            let matchesGdArray = z.gds.filter(gd => {
-                if (exclNezahtevne && !JSON.stringify(gd.row_data).toLowerCase().includes('nezahtev')) return true;
-                if (exclNezahtevne && JSON.stringify(gd.row_data).toLowerCase().includes('nezahtev')) return false;
+            let imaVeljavnoPrijavoOverall = z.gds.some(gd => {
+                let pzg = String(gd.row_data['Datum prij. zač. grad.'] || '');
+                let leto = parseInt((pzg.match(/\d{4}/) || [0])[0]);
+                return leto > 1900 && !isNaN(leto);
+            });
 
+            if (fltPzg && imaVeljavnoPrijavoOverall) {
+                if (z.layer_gd && map.hasLayer(z.layer_gd)) map.removeLayer(z.layer_gd);
+                return; 
+            }
+
+            let matchesGdArray = z.gds.filter(gd => {
+                if (exclNezahtevne && JSON.stringify(gd.row_data).toLowerCase().includes('nezahtev')) return false;
                 if (valNacin && gd.nacin !== valNacin) return false;
                 if (valLeto && gd.leto_izd !== valLeto) return false;
-                if (fltPzg) {
-                    let pzg = String(gd.row_data['Datum prij. zač. grad.'] || '');
-                    let leto = parseInt((pzg.match(/\d{4}/) || [0])[0]);
-                    if (leto !== 1900 && leto !== 0) return false;
-                }
+                
+                if (valCcsi && gd.row_data['CC-SI klasifikacija'] !== valCcsi) return false;
+                if (valVrsta && gd.row_data['Vrsta objekta'] !== valVrsta) return false;
+                
                 return true;
             });
 
             let isGdVisible = showGd && matchSearch && (matchesGdArray.length > 0);
-            if (z.layer_gd) { if (isGdVisible && !map.hasLayer(z.layer_gd)) map.addLayer(z.layer_gd); else if (!isGdVisible && map.hasLayer(z.layer_gd)) map.removeLayer(z.layer_gd); }
+            
+            if (isGdVisible) {
+                // Priprava ikone ✅ / ❌ poleg "GD" kvadratka
+                let imaVeljavno = matchesGdArray.some(gd => {
+                    let pzg = String(gd.row_data['Datum prij. zač. grad.'] || '');
+                    let leto = parseInt((pzg.match(/\d{4}/) || [0])[0]);
+                    return leto > 1900 && !isNaN(leto);
+                });
+                
+                let symbol = imaVeljavno ? '✅' : '❌';
+                let stackHtml = new Array(matchesGdArray.length).fill("GD").join("<br>");
+                
+                let iconHtml = `<div style="position:absolute; top:-10px; left:-10px; display:flex; align-items:center;">
+                    <div style="background:rgba(243, 156, 18, 0.95); color:white; font-weight:bold; font-size:11px; border-radius:4px; padding:2px 4px; text-align:center; border:1px solid #d68910; pointer-events:auto; cursor:pointer;">
+                        ${stackHtml}
+                    </div>
+                    <div style="margin-left:5px; font-size:16px; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; pointer-events:none;">
+                        ${symbol}
+                    </div>
+                </div>`;
+                
+                if (z.layer_gd) {
+                    z.layer_gd.setIcon(L.divIcon({html: iconHtml, className: 'dummy-class'}));
+                    if (!map.hasLayer(z.layer_gd)) map.addLayer(z.layer_gd);
+                }
 
-            let uId = z.sifra_ko + "_" + z.gurs_parcela_raw.replace(/[\s\/\*-]/g, '');
-            if (isGdVisible) targetParcelsOrange.push(uId);
+                let uId = z.sifra_ko + "_" + z.gurs_parcela_raw.replace(/[\s\/\*-]/g, '');
+                targetParcelsOrange.push(uId);
+            } else {
+                if (z.layer_gd && map.hasLayer(z.layer_gd)) map.removeLayer(z.layer_gd);
+            }
         });
+        
         naloziParcele();
     };
 
@@ -349,7 +401,6 @@
     }
 
     window.naloziParcele = function() {
-        // MANJŠI ZOOM ZA PRIKAZ PARCEL (17 namesto 19)
         if (!document.getElementById('check-parcele').checked || map.getZoom() < 17) { parceleLayer.clearLayers(); return; }
         if (fetchAbortController) fetchAbortController.abort();
         fetchAbortController = new AbortController();
@@ -368,7 +419,8 @@
                     const uniqueId = koSifra + "_" + cleanSt;
                     const eid = f.properties.EID || f.properties.eid || f.properties.OST_EID;
 
-                    let tClass = targetParcelsOrange.includes(uniqueId) ? 'parcel-tooltip orange-tooltip' : 'parcel-tooltip';
+                    let isOrange = targetParcelsOrange.includes(uniqueId);
+                    let tClass = isOrange ? 'parcel-tooltip orange-tooltip' : 'parcel-tooltip';
                     
                     try {
                         let center = turf.centerOfMass(f);
