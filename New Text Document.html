@@ -1,165 +1,106 @@
+
 <!DOCTYPE html>
 <html lang="sl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Javni GIS Pregledovalnik v10.0 (Relacijska) (PIS & GURS)</title>
+    <title>PIS Iskalnik Aktov po Parcelah</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; background: #1a1a1a; }
-        #map { width: 100%; height: 100%; z-index: 1; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; background: #f4f6f8; display: flex; flex-direction: row;}
         
-        .main-menu { position: absolute; top: 15px; left: 15px; z-index: 1000; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); width: 340px; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
-        .main-menu.collapsed { width: 50px; height: 50px; border-radius: 25px; overflow: hidden; }
-        .main-menu.collapsed .menu-content { display: none; }
-        .menu-header { display: flex; align-items: center; padding: 12px 15px; background: #2c3e50; color: white; cursor: pointer; }
-        #toggle-menu-btn { background: none; border: none; font-size: 24px; color: white; padding:0; margin:0; cursor:pointer; display: flex; align-items: center; justify-content: center; }
-        .menu-content { padding: 15px; max-height: 70vh; overflow-y: auto; }
+        /* Levi panel za iskanje in rezultate */
+        #sidebar { width: 420px; min-width: 420px; height: 100%; background: #ffffff; box-shadow: 2px 0 15px rgba(0,0,0,0.1); z-index: 1000; display: flex; flex-direction: column; overflow: hidden; }
         
-        .filter-title { font-size: 11px; font-weight: 700; color: #7f8c8d; text-transform: uppercase; margin-bottom: 6px; margin-top: 12px; display: block; letter-spacing: 0.5px; }
-        .filter-select { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #bdc3c7; font-size: 13px; box-sizing: border-box; background: white; color:#2c3e50; outline: none; transition: border-color 0.2s;}
-        .filter-select:focus { border-color: #3498db; }
+        /* Glava iskalnika */
+        .search-header { background: #2c3e50; color: white; padding: 20px; }
+        .search-header h2 { margin: 0 0 15px 0; font-size: 20px; font-weight: 800; }
         
-        .row-chk { display: flex; align-items: center; margin-top: 12px; font-size: 14px; cursor: pointer; color: #2c3e50; font-weight: 600; padding: 4px 0;}
-        .row-chk input { margin-right: 12px; width: 18px; height: 18px; cursor: pointer; accent-color: #3498db; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .input-field { flex: 1; }
+        .input-field label { display: block; font-size: 11px; font-weight: bold; color: #bdc3c7; text-transform: uppercase; margin-bottom: 5px; }
+        .input-field input { width: 100%; padding: 10px; border: 1px solid #34495e; border-radius: 6px; font-size: 15px; box-sizing: border-box; background: #fdfdfd; outline: none; transition: border 0.2s;}
+        .input-field input:focus { border-color: #3498db; }
         
-        .parcel-label { color: #ffffff; font-weight: 800; font-size: 13px; text-align: center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 4px #000; margin-left: -15px !important; margin-top: -8px !important; }
-        .pis-oznaka { background: rgba(255, 255, 255, 0.95) !important; border: 2px solid #2c3e50 !important; color: #2c3e50 !important; font-size: 12px; font-weight: 800; padding: 3px 6px !important; border-radius: 6px !important; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;}
-        
-        #status-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; background: rgba(44, 62, 80, 0.95); color: white; padding: 10px 24px; border-radius: 30px; font-size: 14px; font-weight: 600; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s; pointer-events: none; backdrop-filter: blur(4px); letter-spacing: 0.5px;}
-        #zoom-warning { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 1000; background: rgba(231, 76, 60, 0.95); color: white; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; box-shadow: 0 4px 15px rgba(0,0,0,0.3); pointer-events: none; opacity: 0; transition: opacity 0.4s ease-in-out;}
+        .btn-search { width: 100%; background: #3498db; color: white; border: none; padding: 12px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px rgba(52, 152, 219, 0.3); }
+        .btn-search:hover { background: #2980b9; transform: translateY(-1px); }
+        .btn-search:active { transform: translateY(1px); }
 
-        .loc-btn { background: white; border: 2px solid rgba(0,0,0,0.15); border-radius: 50% !important; width: 46px !important; height: 46px !important; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #2c3e50; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s;}
-        .loc-btn:hover { background: #f8f9fa; transform: scale(1.05); }
-        .loc-btn svg { width: 24px; height: 24px; fill: currentColor; }
-        .loc-active { color: #3498db !important; background: #ebf5fb !important; border-color: #3498db; }
+        /* Kontejner za rezultate */
+        #results-container { flex: 1; overflow-y: auto; padding: 20px; background: #f8f9fa; }
+        
+        /* Statusni izpisi */
+        .status-msg { padding: 15px; border-radius: 8px; font-size: 14px; font-weight: 500; margin-bottom: 15px; text-align: center; }
+        .status-loading { background: #e8f4fd; color: #2980b9; border: 1px solid #bde0fe; }
+        .status-error { background: #fdf0ed; color: #c0392b; border: 1px solid #fadbd8; }
+        .status-success { background: #eafaf1; color: #27ae60; border: 1px solid #d4efdf; }
 
-        #bottom-panel { position: fixed; bottom: 0; left: 0; width: 100%; max-height: 65vh; background: #fdfdfd; z-index: 9999; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); overflow-y: auto; padding: 0; box-sizing: border-box; border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -10px 40px rgba(0,0,0,0.25); display: flex; flex-direction: column;}
-        #bottom-panel.open { transform: translateY(0); }
-        
-        .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; background: white; border-bottom: 1px solid #eaeaea; position: sticky; top: 0; z-index: 10; border-top-left-radius: 24px; border-top-right-radius: 24px;}
-        .panel-header h2 { margin: 0; font-size: 20px; color: #2c3e50; font-weight: 800; display:flex; align-items:center; }
-        
-        #zapri-btn { background: #ecf0f1; border: none; font-size: 16px; color: #7f8c8d; cursor: pointer; width: 36px; height: 36px; border-radius: 50%; display:flex; align-items:center; justify-content:center; transition: 0.2s;}
-        #zapri-btn:hover { background: #e74c3c; color: white; transform: rotate(90deg); }
-        
-        .panel-body { padding: 24px; flex-grow: 1; overflow-y: auto; }
-
-        .data-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 15px; background: white; border-radius: 8px; overflow: hidden;}
-        .data-table th, .data-table td { border-bottom: 1px solid #f0f0f0; padding: 10px 8px; vertical-align: top; }
-        .data-table th { color: #7f8c8d; font-weight: 600; width: 35%; background: #fcfcfc;}
-        .data-table td { color: #2c3e50; font-weight: 700; }
-        
-        .gd-card { background: #fffaf0; border: 1px solid #f39c12; border-left: 5px solid #f39c12; border-radius: 8px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
-        .gd-card.has-pzg { background: #f0fdf4; border-color: #27ae60; border-left-color: #27ae60; }
-        .gd-card-title { margin: 0 0 15px 0; color: #d35400; font-size: 16px; font-weight: 800; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom: 8px; }
+        /* Kartice aktov */
+        .gd-card { background: white; border: 1px solid #e0e0e0; border-left: 5px solid #f39c12; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .gd-card.has-pzg { border-left-color: #27ae60; background: #fafdfb; }
+        .gd-card-title { margin: 0 0 12px 0; color: #d35400; font-size: 16px; font-weight: 800; border-bottom: 1px solid #f0f0f0; padding-bottom: 8px; }
         .gd-card.has-pzg .gd-card-title { color: #27ae60; }
-
-        .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 15px; }
-        .btn-service { display: flex; align-items: center; justify-content: center; padding: 12px; color: white !important; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 13px; text-align: center; box-shadow: 0 3px 6px rgba(0,0,0,0.15); transition: 0.2s; border: 1px solid rgba(0,0,0,0.1);}
-        .btn-service:hover { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 5px 12px rgba(0,0,0,0.2); }
         
-        .bg-pis { background: linear-gradient(135deg, #16a085, #1abc9c); }
-        .bg-gurs { background: linear-gradient(135deg, #2980b9, #3498db); }
-        .bg-zk { background: linear-gradient(135deg, #c0392b, #e74c3c); }
-        .bg-obcina { background: linear-gradient(135deg, #8e44ad, #9b59b6); }
-        .bg-maps { background: linear-gradient(135deg, #2c3e50, #34495e); }
-        .bg-eprostor { background: linear-gradient(135deg, #d35400, #e67e22); }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .data-table th, .data-table td { border-bottom: 1px solid #f5f5f5; padding: 6px 0; vertical-align: top; }
+        .data-table th { color: #7f8c8d; font-weight: 600; width: 40%; text-align: left; padding-right: 10px;}
+        .data-table td { color: #2c3e50; font-weight: 700; }
 
-        .legend { margin-top: 20px; background: #f8f9fa; padding: 12px; border-radius: 8px; font-size: 12px; color:#2c3e50; line-height: 1.6; border: 1px solid #eee;}
-        .legend-item { display: flex; align-items: center; margin-bottom: 6px; font-weight: 500;}
-        .l-box { width: 16px; height: 16px; border-radius: 4px; margin-right: 10px; flex-shrink: 0;}
+        .btn-link { display: block; background: #16a085; color: white; text-align: center; padding: 10px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; margin-top: 15px; transition: 0.2s;}
+        .btn-link:hover { background: #117a65; }
 
-        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: inline-block; margin-left: 10px;}
+        /* Območje zemljevida */
+        #map-container { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; }
+        
+        .parcel-label { color: white; font-weight: 900; font-size: 16px; text-align: center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0px 0px 6px rgba(0,0,0,0.8); margin-left: -15px !important; margin-top: -10px !important; }
+
+        /* Loader animacija */
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid #fff; width: 16px; height: 16px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-left: 8px;}
+        .spinner-blue { border-color: rgba(52,152,219,0.2); border-top-color: #3498db; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<div id="status-bar">Zemljevid pripravljen</div>
-<div id="zoom-warning">⚠️ Približaj pogled (Zoom in) za prikaz in prenos podatkov!</div>
-
-<div id="main-menu" class="main-menu">
-    <div class="menu-header" onclick="document.getElementById('main-menu').classList.toggle('collapsed')">
-        <button id="toggle-menu-btn">☰</button>
-        <span style="font-size:16px; font-weight:800; margin-left:12px; letter-spacing: 0.5px;">Live PIS & GURS <span style="color:#f1c40f; font-size:12px; font-weight:bold;">v10.0 (Relacijska)</span></span>
+<div id="sidebar">
+    <div class="search-header">
+        <h2>PIS Iskalnik po parcelah</h2>
+        <p style="font-size: 12px; color: #bdc3c7; margin: 0 0 15px 0;">Vpiši šifro katastrske občine in številko parcele za prenos podatkov v živo.</p>
+        
+        <div class="input-group">
+            <div class="input-field">
+                <label>Šifra KO</label>
+                <input type="text" id="in-ko" placeholder="Npr. 1724" value="1724">
+            </div>
+            <div class="input-field">
+                <label>Št. parcele</label>
+                <input type="text" id="in-parc" placeholder="Npr. 372/52" value="372/52">
+            </div>
+        </div>
+        <button class="btn-search" onclick="isciParcelo()" id="btn-isci">🔍 Najdi Parcelo in Akte</button>
     </div>
-    <div class="menu-content">
-        <p style="font-size: 12px; color: #7f8c8d; margin-top:0; line-height: 1.4;">Parcele se obarvajo na podlagi najdenih gradbenih dovoljenj (upravnih aktov).</p>
-        
-        <label class="filter-title">Leto izdaje akta</label>
-        <select id="flt-leto" class="filter-select" onchange="uporabiFiltre()"><option value="">Vsa leta</option></select>
-        
-        <label class="filter-title">CC-SI Klasifikacija</label>
-        <select id="flt-ccsi" class="filter-select" onchange="uporabiFiltre()"><option value="">Vse klasifikacije</option></select>
-
-        <label class="filter-title">Vrsta objekta</label>
-        <select id="flt-vrsta" class="filter-select" onchange="uporabiFiltre()"><option value="">Vse vrste objektov</option></select>
-        
-        <label class="filter-title">Dodatni filtri za GD</label>
-        <label class="row-chk">
-            <input type="checkbox" id="flt-pzg" onchange="uporabiFiltre()"> 
-            Ni evidentirane prijave začetka gradnje
-        </label>
-        <label class="row-chk">
-            <input type="checkbox" id="flt-izloci-nez" onchange="uporabiFiltre()" checked> 
-            Skrij nezahtevne in enostavne objekte
-        </label>
-
-        <div class="legend">
-            <div style="font-weight:700; margin-bottom:8px;">Legenda parcele (z upravnim aktom):</div>
-            <div class="legend-item"><div class="l-box" style="background: rgba(243, 156, 18, 0.4); border: 2px solid #f39c12;"></div> Izdano GD (Brez prijave) 🟧</div>
-            <div class="legend-item"><div class="l-box" style="background: rgba(39, 174, 96, 0.4); border: 2px solid #27ae60;"></div> Izdano GD + Prijava gradnje ✅</div>
+    
+    <div id="results-container">
+        <div style="text-align:center; color:#95a5a6; margin-top:40px; font-style:italic;">
+            Pritisni gumb za iskanje, da sistem preveri baze PIS in GURS.
         </div>
     </div>
 </div>
 
-<div id="bottom-panel">
-    <div class="panel-header">
-        <h2 id="panel-title">Nalagam podatke...</h2>
-        <button id="zapri-btn" onclick="document.getElementById('bottom-panel').classList.remove('open');">✖</button>
-    </div>
-    <div class="panel-body" id="bottom-vsebina"></div>
+<div id="map-container">
+    <div id="map"></div>
 </div>
-
-<div id="map"></div>
 
 <script>
     // --- INICIALIZACIJA ZEMLJEVIDA ---
-    const startLat = 46.056; const startLng = 14.505; const startZoom = 14;
-    
+    const startLat = 46.056; const startLng = 14.505; const startZoom = 9;
     const map = L.map('map', { zoomControl: false }).setView([startLat, startLng], startZoom);
     L.control.zoom({ position: 'topright' }).addTo(map);
-
-    let locControl = L.control({position: 'bottomleft'});
-    locControl.onAdd = function() { 
-        let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control'); 
-        div.innerHTML = `<a href="#" id="loc-btn-icon" class="loc-btn" title="Vklopi/Izklopi mojo lokacijo"><svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg></a>`; 
-        return div; 
-    };
-    locControl.addTo(map);
-
-    let userMarker = null; let isLocating = false;
-    document.getElementById('loc-btn-icon').addEventListener('click', function(e) {
-        e.preventDefault(); isLocating = !isLocating;
-        if(isLocating) {
-            this.classList.add('loc-active');
-            map.locate({setView: true, maxZoom: 18, watch: true, enableHighAccuracy: true});
-        } else {
-            this.classList.remove('loc-active');
-            map.stopLocate();
-            if(userMarker) { map.removeLayer(userMarker); userMarker = null; }
-        }
-    });
-
-    map.on('locationfound', function(e) {
-        if (!userMarker) userMarker = L.circleMarker(e.latlng, {radius:8, color:'white', fillColor:'#3498db', fillOpacity:1, weight:2, zIndexOffset: 2000}).addTo(map);
-        else userMarker.setLatLng(e.latlng);
-    });
 
     const satelit = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 21, maxNativeZoom: 19 });
     satelit.addTo(map);
@@ -167,318 +108,9 @@
     let gursLayer = L.layerGroup().addTo(map);
     let labelsLayer = L.layerGroup().addTo(map);
 
-    let currentGursFeatures = [];
-    let aktiDetailsDict = {}; // Vsi prenešeni akti (ID_UA kot ključ)
-    let apiCache = {}; // Cache za REST API
-    
-    let controllerData = null;
-
-    const statusBar = document.getElementById('status-bar');
-    const zoomWarning = document.getElementById('zoom-warning');
-
-    const selLeto = document.getElementById('flt-leto');
-    const selCcsi = document.getElementById('flt-ccsi');
-    const selVrsta = document.getElementById('flt-vrsta');
-
-    // --- FUNKCIJA ZA OBOGATITEV WFS AKTOV Z REST API (za CC-SI) ---
-    async function obogatiAkteS_PIS_API(idUaArray) {
-        statusBar.innerHTML = `⏳ Pridobivam detajle iz PIS-a...`;
-        statusBar.style.background = "rgba(52, 152, 219, 0.95)";
-        
-        const batchSize = 10; 
-        for (let i = 0; i < idUaArray.length; i += batchSize) {
-            const batch = idUaArray.slice(i, i + batchSize);
-            await Promise.all(batch.map(async (id) => {
-                if (apiCache[id]) return; // Že imamo
-                try {
-                    let res = await fetch(`https://pis.eprostor.gov.si/pis-ua-api/api/javno/upravni-akt/${id}`);
-                    if (res.ok) {
-                        let data = await res.json();
-                        apiCache[id] = data;
-                        if(aktiDetailsDict[id]) {
-                            aktiDetailsDict[id].CC_SI_API = data.ccsi || data.klasifikacija || "";
-                            aktiDetailsDict[id].VRSTA_API = data.vrstaObjekta || data.nazivObjekta || "";
-                            aktiDetailsDict[id].INVESTITOR_API = data.investitor || "";
-                        }
-                    }
-                } catch(e) {}
-            }));
-        }
-        
-        osveziFiltreUI();
-        uporabiFiltre();
-        statusBar.innerHTML = `✅ Podatki v živo uspešno posodobljeni!`;
-        statusBar.style.background = "rgba(39, 174, 96, 0.95)";
-        setTimeout(() => { statusBar.style.background = "rgba(44, 62, 80, 0.95)"; }, 2500);
-    }
-
-    // --- PRIDOBIVANJE PODATKOV WFS V ŽIVO (HIBRID) ---
-    async function naloziPodatke() {
-        if (map.getZoom() < 16) {
-            zoomWarning.style.opacity = '1';
-            gursLayer.clearLayers();
-            labelsLayer.clearLayers();
-            currentGursFeatures = [];
-            aktiDetailsDict = {};
-            osveziFiltreUI();
-            return;
-        }
-        
-        zoomWarning.style.opacity = '0';
-        statusBar.innerHTML = "⏳ Prenašam GURS in PIS relacije...";
-        statusBar.style.background = "rgba(243, 156, 18, 0.95)";
-
-        if (controllerData) controllerData.abort();
-        controllerData = new AbortController();
-
-        const bounds = map.getBounds();
-        const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},EPSG:4326`;
-
-        // 3 URL-ji za relacijsko združevanje
-        const urlGurs = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox}`;
-        const urlPisParcele = `https://storitve.eprostor.gov.si/ows-pub-wfs/SI.MOP.GRAD/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.MOP.GRAD:UPRAVNI_AKTI_PARCELE&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox}`;
-        const urlPisAkti = `https://storitve.eprostor.gov.si/ows-pub-wfs/SI.MOP.GRAD/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=SI.MOP.GRAD:UPRAVNI_AKTI&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox}`;
-
-        try {
-            const [resGurs, resPisParcele, resPisAkti] = await Promise.all([
-                fetch(urlGurs, { signal: controllerData.signal }).then(r => r.json()).catch(() => null),
-                fetch(urlPisParcele, { signal: controllerData.signal }).then(r => r.json()).catch(() => null),
-                fetch(urlPisAkti, { signal: controllerData.signal }).then(r => r.json()).catch(() => null)
-            ]);
-
-            gursLayer.clearLayers();
-            labelsLayer.clearLayers();
-            currentGursFeatures = [];
-            aktiDetailsDict = {};
-
-            // 1. Zgradimo slovar PIS aktov
-            if (resPisAkti && resPisAkti.features) {
-                resPisAkti.features.forEach(f => {
-                    aktiDetailsDict[f.properties.ID_UA] = f.properties;
-                });
-            }
-
-            // 2. Zgradimo relacijo med Parcelo in Akti
-            let parcelToAkti = {}; // ključ = KOSIFRA_PARCELA
-            if (resPisParcele && resPisParcele.features) {
-                resPisParcele.features.forEach(f => {
-                    let p = f.properties;
-                    let ko = p.SIFKO;
-                    let parc = String(p.PARCELA || "").replace(/[\s\/\*-]/g, '');
-                    let idUa = p.ID_UA;
-                    
-                    if (ko && parc && idUa) {
-                        let key = ko + "_" + parc;
-                        if (!parcelToAkti[key]) parcelToAkti[key] = [];
-                        if (!parcelToAkti[key].includes(idUa)) parcelToAkti[key].push(idUa);
-                    }
-                });
-            }
-
-            // 3. Obdelamo GURS parcele in vstavimo akte v njihove lastnosti
-            let allRelevantActIds = new Set();
-            let parcelZAktiCount = 0;
-
-            if (resGurs && resGurs.features) {
-                resGurs.features.forEach(f => {
-                    let p = f.properties;
-                    let ko = p.KO_SIFRA || p.KO_ID || p.ko_sifra;
-                    let parc = String(p.ST_PARCELE || p.st_parcele).replace(/[\s\/\*-]/g, '');
-                    let key = ko + "_" + parc;
-
-                    f.properties.AKTI_DATA = [];
-                    let hasGd = false;
-
-                    let actIds = parcelToAkti[key] || [];
-                    actIds.forEach(id => {
-                        let aData = aktiDetailsDict[id];
-                        if (aData) {
-                            f.properties.AKTI_DATA.push(aData);
-                            let tip = (aData.SIF_VRS_UA_KRA_SIF || aData.NAZ_UPR_POS || "").toUpperCase();
-                            if (tip === "GD" || tip.includes("GRADBENO")) {
-                                hasGd = true;
-                                allRelevantActIds.add(id); // Shranimo za kasnejši REST API fetch
-                            }
-                        }
-                    });
-
-                    f.properties.HAS_GD = hasGd;
-                    if(hasGd) parcelZAktiCount++;
-                    
-                    currentGursFeatures.push(f);
-                });
-            }
-
-            osveziFiltreUI();
-            uporabiFiltre(); // Izris map
-
-            if (parcelZAktiCount > 0) {
-                obogatiAkteS_PIS_API(Array.from(allRelevantActIds));
-            } else {
-                statusBar.innerHTML = `✅ Območje brez najdenih aktov.`;
-                statusBar.style.background = "rgba(44, 62, 80, 0.95)";
-                setTimeout(() => { statusBar.style.background = "rgba(44, 62, 80, 0.95)"; }, 2500);
-            }
-
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                statusBar.innerHTML = "❌ Napaka mrežnega prenosa";
-                statusBar.style.background = "rgba(231, 76, 60, 0.95)";
-            }
-        }
-    }
-
-    // --- DINAMIČNI FILTRI ---
-    function osveziFiltreUI() {
-        let staroLeto = selLeto.value;
-        let staroCcsi = selCcsi.value;
-        let staraVrsta = selVrsta.value;
-
-        let setLeta = new Set();
-        let setCcsi = new Set();
-        let setVrsta = new Set();
-
-        currentGursFeatures.forEach(f => {
-            if(!f.properties.HAS_GD) return;
-            
-            f.properties.AKTI_DATA.forEach(a => {
-                let tipAkta = (a.SIF_VRS_UA_KRA_SIF || a.NAZ_UPR_POS || "").toUpperCase();
-                if (tipAkta !== "GD" && !tipAkta.includes("GRADBENO")) return;
-
-                let datumIzd = a.DAT_IZD || "";
-                let leto = datumIzd.length >= 4 ? datumIzd.substring(0,4) : "";
-                if (leto) setLeta.add(leto);
-
-                let ccsi = (a.CC_SI_API || "").trim();
-                if (ccsi) setCcsi.add(ccsi);
-
-                let vrsta = (a.VRSTA_API || a.OBJ || "").trim();
-                if (vrsta) setVrsta.add(vrsta);
-            });
-        });
-
-        if (staroLeto) setLeta.add(staroLeto);
-        if (staroCcsi) setCcsi.add(staroCcsi);
-        if (staraVrsta) setVrsta.add(staraVrsta);
-
-        selLeto.innerHTML = '<option value="">Vsa leta izdaje</option>';
-        Array.from(setLeta).sort().reverse().forEach(v => {
-            let opt = document.createElement('option'); opt.value = v; opt.innerHTML = v; selLeto.appendChild(opt);
-        });
-        selLeto.value = staroLeto;
-
-        selCcsi.innerHTML = '<option value="">Vse CC-SI klasifikacije</option>';
-        Array.from(setCcsi).sort().forEach(v => {
-            let opt = document.createElement('option'); opt.value = v; 
-            opt.innerHTML = v.length > 45 ? v.substring(0, 42) + "..." : v; selCcsi.appendChild(opt);
-        });
-        selCcsi.value = staroCcsi;
-
-        selVrsta.innerHTML = '<option value="">Vse vrste objektov / opisi</option>';
-        Array.from(setVrsta).sort().forEach(v => {
-            let opt = document.createElement('option'); opt.value = v; 
-            opt.innerHTML = v.length > 45 ? v.substring(0, 42) + "..." : v; selVrsta.appendChild(opt);
-        });
-        selVrsta.value = staraVrsta;
-    }
-
-    window.uporabiFiltre = function() {
-        gursLayer.clearLayers();
-        labelsLayer.clearLayers();
-        
-        let fLeto = selLeto.value;
-        let fCcsi = selCcsi.value.toLowerCase();
-        let fVrsta = selVrsta.value.toLowerCase();
-        let fPzg = document.getElementById('flt-pzg').checked; // "Ni evidentirane prijave"
-        let fNez = document.getElementById('flt-izloci-nez').checked;
-
-        let styledFeatures = { type: "FeatureCollection", features: [] };
-
-        currentGursFeatures.forEach(f => {
-            let p = f.properties;
-            
-            let color = "#ffffff";
-            let weight = 1.5;
-            let fillOpacity = 0.0;
-            let tooltipText = "";
-
-            if (p.HAS_GD) {
-                let matchingActs = p.AKTI_DATA.filter(a => {
-                    let tipAkta = (a.SIF_VRS_UA_KRA_SIF || a.NAZ_UPR_POS || "").toUpperCase();
-                    if (tipAkta !== "GD" && !tipAkta.includes("GRADBENO")) return false;
-
-                    let vrstaPostopka = (a.OBJ || "").toUpperCase();
-                    if (fNez && (vrstaPostopka.includes("NEZAHTEVN") || vrstaPostopka.includes("ENOSTAVN"))) return false;
-
-                    let datumIzd = a.DAT_IZD || "";
-                    let izLeto = datumIzd.length >= 4 ? datumIzd.substring(0,4) : "";
-                    if (fLeto && izLeto !== fLeto) return false;
-
-                    let ccsi = (a.CC_SI_API || "").trim().toLowerCase();
-                    if (fCcsi && !ccsi.includes(fCcsi)) return false;
-
-                    let vrsta = (a.VRSTA_API || a.OBJ || "").trim().toLowerCase();
-                    if (fVrsta && !vrsta.includes(fVrsta)) return false;
-
-                    let rawPzg = a.DAT_ZAC_GRA || "";
-                    let imaPzg = (rawPzg !== "" && !rawPzg.includes("1900-01-01") && rawPzg !== "0");
-                    
-                    // Če želimo samo tiste BREZ prijave gradnje, odstranimo tiste ki JO IMAJO
-                    if (fPzg && imaPzg) return false;
-
-                    a._tempHasPzg = imaPzg;
-                    return true;
-                });
-
-                if (matchingActs.length > 0) {
-                    let parcelHasPzg = matchingActs.some(a => a._tempHasPzg);
-                    color = parcelHasPzg ? "#27ae60" : "#f39c12";
-                    weight = 2.5;
-                    fillOpacity = 0.35;
-                    tooltipText = parcelHasPzg ? "GD ✅" : "GD 🟧";
-                    
-                    // Omogoči, da gredo parcele "v ospredje" nad tiste, ki so prazne
-                    f.isHighlighted = true;
-                }
-            }
-
-            f.styleObj = { color: color, weight: weight, fillColor: color, fillOpacity: fillOpacity, opacity: f.isHighlighted ? 1 : 0.6 };
-            f.tooltipText = tooltipText;
-            styledFeatures.features.push(f);
-        });
-
-        L.geoJSON(styledFeatures, {
-            style: function(f) { return f.styleObj; },
-            onEachFeature: function(f, layer) {
-                let stParcele = f.properties.ST_PARCELE || f.properties.st_parcele;
-                let koSifra = f.properties.KO_SIFRA || f.properties.KO_ID || f.properties.ko_sifra;
-
-                if (f.tooltipText && map.getZoom() >= 16) {
-                    try {
-                        let center = turf.centerOfMass(f);
-                        layer.bindTooltip(f.tooltipText, { permanent: true, direction: 'center', className: 'pis-oznaka' });
-                    } catch(e) {}
-                }
-
-                if (map.getZoom() >= 18 && stParcele) {
-                    try {
-                        let center = turf.centerOfMass(f);
-                        let labelIcon = L.divIcon({ className: 'parcel-label', html: stParcele, iconSize: [0,0] });
-                        L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon: labelIcon, interactive: false}).addTo(labelsLayer);
-                    } catch(e) {}
-                }
-
-                layer.on('click', function(e) {
-                    L.DomEvent.stopPropagation(e);
-                    prikaziPodrobnostiParcele(koSifra, stParcele, e.latlng, f);
-                });
-            }
-        }).addTo(gursLayer);
-    };
-
-    // --- MEGA MENI (UIX) ---
+    // --- POMOŽNE FUNKCIJE ---
     function formatirajDatum(isoDatum) {
-        if (!isoDatum || isoDatum.includes("1900") || isoDatum === "0") return '<span style="color:#e74c3c;">❌ Ni evidentirano</span>';
+        if (!isoDatum || isoDatum.includes("1900") || isoDatum === "0") return '<span style="color:#e74c3c;">Ni vneseno</span>';
         let parts = isoDatum.split("T")[0].split("-");
         if (parts.length === 3) return `${parts[2]}. ${parts[1]}. ${parts[0]}`;
         return isoDatum;
@@ -489,85 +121,163 @@
         return txt.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    function prikaziPodrobnostiParcele(koSifra, stParcele, latlng, featurePoligon) {
-        let parcClean = stParcele.toString().replace(/[']/g, '');
-        document.getElementById('panel-title').innerHTML = `Detajli: KO ${koSifra}, parc. ${parcClean}`;
-
-        let zkForm = `
-            <form id="zk-form-${parcClean}" method="POST" action="https://evlozisce.sodisce.si/evlozisce/javni_izpisi/03-001.html" target="_blank" style="display:none;">
-                <input type="hidden" name="nacinList" value="IDZNAK">
-                <input type="hidden" name="tipNepList.nobind" value="1">
-                <input type="hidden" name="idZnakNep.katastrskaObcina.idsrcsifrant" value="${koSifra}">
-                <input type="hidden" name="idZnakNep.parcelnaStevilkaNovo" value="${parcClean.split(' ').pop()}">
-                <input type="hidden" name="_eventId_pdf" value="Prikaži v pdf obliki">
-            </form>
-        `;
-
-        let btnPisSplošno = `<a href="https://pis.eprostor.gov.si/pis-ua-jv/seznam.html?mobile=true&lang=sl" target="_blank" class="btn-service bg-pis">🏛️ PIS Iskalnik</a>`;
-        let btnEprostor = `<a href="https://javni-vpogled.eprostor.gov.si/" target="_blank" class="btn-service bg-eprostor">🗺️ e-Prostor</a>`;
-        let btnZk = `<a href="#" onclick="document.getElementById('zk-form-${parcClean}').submit(); return false;" class="btn-service bg-zk">📄 ZK Izpisek</a>`;
-        let btnGurs = `<a href="https://ipi.eprostor.gov.si/jv/" target="_blank" class="btn-service bg-gurs">🌍 GURS JV</a>`;
-        let btnIObcina = `<a href="https://gis.iobcina.si/gisapp/?PARC=${koSifra}:${parcClean}" target="_blank" class="btn-service bg-obcina">📍 iObčina</a>`;
-        let btnMaps = `<a href="http://googleusercontent.com/maps.google.com/dir/?api=1&destination=${latlng.lat},${latlng.lng}" target="_blank" class="btn-service bg-maps">🧭 Google Maps</a>`;
-
-        let gumbiHTML = `${zkForm}<div class="services-grid">${btnPisSplošno}${btnEprostor}${btnZk}${btnGurs}${btnIObcina}${btnMaps}</div>`;
-
-        let aktiHtml = "";
-        
-        if (featurePoligon && featurePoligon.properties.HAS_GD) {
-            let matches = featurePoligon.properties.AKTI_DATA.filter(a => {
-                let tipAkta = (a.SIF_VRS_UA_KRA_SIF || a.NAZ_UPR_POS || "").toUpperCase();
-                return (tipAkta === "GD" || tipAkta.includes("GRADBENO"));
-            });
-
-            for (let idx = 0; idx < matches.length; idx++) {
-                let p = matches[idx];
-                let id = p.ID_UA;
-                
-                let stZadeve = varuj(p.STEV_ZAD);
-                let opis = varuj(p.OPIS_API || p.OBJ);
-                let organ = varuj(p.NAZ_UPR_ORG);
-                let izdaja = formatirajDatum(p.DAT_IZD);
-                let pravnom = formatirajDatum(p.MAX_DAT_PRA);
-                
-                let pzgRaw = p.DAT_ZAC_GRA || "";
-                let imaPrijavo = (pzgRaw && !pzgRaw.includes('1900') && pzgRaw !== "0");
-                let pzgDisplay = imaPrijavo ? `<span style="color:#27ae60;">${formatirajDatum(pzgRaw)} ✅</span>` : `<span style="color:#e74c3c;">❌ Ni evidentirano</span>`;
-                let cardClass = imaPrijavo ? "gd-card has-pzg" : "gd-card";
-                
-                let ccsi = p.CC_SI_API ? varuj(p.CC_SI_API) : '<span style="color:#bdc3c7;">Pridobivam iz PIS...</span>';
-                let vrsta = p.VRSTA_API ? varuj(p.VRSTA_API) : varuj(p.OBJ);
-                let investitor = p.INVESTITOR_API ? varuj(p.INVESTITOR_API) : '<span style="color:#bdc3c7;">Pridobivam iz PIS...</span>';
-
-                let btnPisAkt = id ? `<a href="https://pis.eprostor.gov.si/pis-ua-jv/upravni-akt.html?id=${id}&lang=sl" target="_blank" class="btn-service bg-pis" style="margin-top:15px; width:100%; box-sizing:border-box;">🔍 Poglej uradni akt v PIS</a>` : "";
-
-                aktiHtml += `
-                <div class="${cardClass}">
-                    <h4 class="gd-card-title">Upravni akt: ${stZadeve}</h4>
-                    <table class="data-table">
-                        <tr><th>Upravni organ</th><td>${organ}</td></tr>
-                        <tr><th>Investitor</th><td>${investitor}</td></tr>
-                        <tr><th>CC-SI Klasif.</th><td>${ccsi}</td></tr>
-                        <tr><th>Vrsta objekta</th><td>${vrsta}</td></tr>
-                        <tr><th>Kratek opis</th><td>${opis}</td></tr>
-                        <tr><th>Izdaja / Pravnom.</th><td>${izdaja} / ${pravnom}</td></tr>
-                        <tr><th>Prijava zač. gradnje</th><td style="font-size:15px;">${pzgDisplay}</td></tr>
-                    </table>
-                    ${btnPisAkt}
-                </div>`;
-            }
-            document.getElementById('bottom-vsebina').innerHTML = aktiHtml + `<h4 style="margin-top:25px; margin-bottom:10px; color:#2c3e50; font-size:16px;">Orodja za parcelo:</h4>` + gumbiHTML;
-        } else {
-            aktiHtml = `<div style="background:#f8f9fa; padding:20px; border-radius:12px; color:#7f8c8d; text-align:center; font-style:italic; border:1px dashed #bdc3c7; margin-bottom:20px; font-weight:500;">Na tej lokaciji PIS sistem trenutno ne beleži izdanih gradbenih dovoljenj.</div>`;
-            document.getElementById('bottom-vsebina').innerHTML = aktiHtml + `<h4 style="margin-top:25px; margin-bottom:10px; color:#2c3e50; font-size:16px;">Orodja za parcelo:</h4>` + gumbiHTML;
-        }
-
-        document.getElementById('bottom-panel').classList.add('open');
+    function pokaziStatus(tip, sporocilo) {
+        const resCont = document.getElementById('results-container');
+        let icon = tip === 'loading' ? '<div class="spinner spinner-blue"></div>' : (tip === 'error' ? '❌' : '✅');
+        resCont.innerHTML = `<div class="status-msg status-${tip}">${icon} ${sporocilo}</div>`;
     }
 
-    map.on('moveend', naloziPodatke);
-    setTimeout(naloziPodatke, 800);
+    // Varna fetch funkcija, ki uporablja Proxy za zaobidenje CORS blokad brskalnika
+    async function varjenFetch(url) {
+        // Uporabljamo allorigins kot zanesljiv brezplačen proxy
+        const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+        let res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error(`Proxy napaka: ${res.status}`);
+        return res;
+    }
 
+    // --- GLAVNA FUNKCIJA ZA ISKANJE IN RISANJE ---
+    async function isciParcelo() {
+        let ko = document.getElementById('in-ko').value.trim();
+        let parc = document.getElementById('in-parc').value.trim();
+        let btn = document.getElementById('btn-isci');
+
+        if (!ko || !parc) { alert("Vpiši KO in Parcelo!"); return; }
+
+        btn.innerHTML = `Iščem... <div class="spinner"></div>`;
+        btn.disabled = true;
+        gursLayer.clearLayers();
+        labelsLayer.clearLayers();
+        pokaziStatus('loading', 'Iščem geometrijo parcele na GURS-u...');
+
+        try {
+            // 1. KORAK: PRIDOBI GEOMETRIJO IZ GURS-A (GURS običajno nima CORS blokade, a gremo vseeno preko proxyja za vsak slučaj)
+            let gursFilter = `KO_SIFRA='${ko}' AND ST_PARCELE='${parc}'`; // Za WFS 2.0.0
+            let gursUrl = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=2.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&cql_filter=${encodeURIComponent(gursFilter)}`;
+            
+            let resGurs = await varjenFetch(gursUrl);
+            let dataGurs = await resGurs.json();
+
+            // Če WFS 2.0.0 ne vrne ničesar, poskusimo s poljem KO_ID namesto KO_SIFRA (odvisno od strežnika)
+            if (!dataGurs.features || dataGurs.features.length === 0) {
+                let gursFilterFallback = `KO_ID=${ko} AND ST_PARCELE='${parc}'`;
+                let gursUrlFallback = `https://ipi.eprostor.gov.si/wfs-si-gurs-kn/wfs?service=WFS&version=2.0.0&request=GetFeature&typeName=SI.GURS.KN:PARCELE&outputFormat=application/json&cql_filter=${encodeURIComponent(gursFilterFallback)}`;
+                let resGursFallback = await varjenFetch(gursUrlFallback);
+                dataGurs = await resGursFallback.json();
+            }
+
+            if (!dataGurs.features || dataGurs.features.length === 0) {
+                pokaziStatus('error', 'GURS: Parcela ni najdena. Preveri številko KO in parcele.');
+                btn.innerHTML = "🔍 Najdi Parcelo in Akte"; btn.disabled = false;
+                return;
+            }
+
+            let parcelFeature = dataGurs.features[0];
+            
+            // 2. KORAK: PRIDOBI ID-JE AKTOV IZ RELACIJSKE TABELE PIS (Strogo preko Proxyja!)
+            pokaziStatus('loading', 'Preverjam upravne akte (PIS)...');
+            let pisFilter = `SIFKO=${ko} AND PARCELA='${parc}'`;
+            let pisUrl = `https://storitve.eprostor.gov.si/ows-pub-wfs/SI.MOP.GRAD/wfs?service=WFS&version=2.0.0&request=GetFeature&typeName=SI.MOP.GRAD:UPRAVNI_AKTI_PARCELE&outputFormat=application/json&cql_filter=${encodeURIComponent(pisFilter)}`;
+            
+            let resPis = await varjenFetch(pisUrl);
+            let dataPis = await resPis.json();
+
+            let actIds = [];
+            if (dataPis.features && dataPis.features.length > 0) {
+                dataPis.features.forEach(f => {
+                    if (f.properties.ID_UA) actIds.push(f.properties.ID_UA);
+                });
+            }
+            actIds = [...new Set(actIds)]; // Odstranimo dvojnike
+
+            // 3. KORAK: ZA VSAK AKT PRIDOBI BOGATE PODATKE IZ REST API (Preko Proxyja!)
+            let actsData = [];
+            let hasPzgOverall = false;
+
+            if (actIds.length > 0) {
+                pokaziStatus('loading', `Prenašam detajle za ${actIds.length} akt(ov)...`);
+                for (let id of actIds) {
+                    try {
+                        let apiUrl = `https://pis.eprostor.gov.si/pis-ua-api/api/javno/upravni-akt/${id}`;
+                        let apiRes = await varjenFetch(apiUrl);
+                        let actDetail = await apiRes.json();
+                        
+                        let tip = (actDetail.sifVrsUaKraSif || actDetail.nazUprPos || "").toUpperCase();
+                        if (tip === "GD" || tip.includes("GRADBENO")) {
+                            actsData.push(actDetail);
+                            let pzg = actDetail.datumPrijaveZacetkaGradnje || "";
+                            if (pzg && !pzg.includes("1900") && pzg !== "0") hasPzgOverall = true;
+                        }
+                    } catch(e) { console.error("Napaka pri branju API za ID:", id); }
+                }
+            }
+
+            // 4. KORAK: IZRISOVANJE IN BARVANJE PARCELE
+            let polyColor = actsData.length > 0 ? (hasPzgOverall ? "#27ae60" : "#f39c12") : "#ffffff";
+            
+            let geojsonLayer = L.geoJSON(parcelFeature, {
+                style: { color: polyColor, weight: 3, fillColor: polyColor, fillOpacity: actsData.length > 0 ? 0.4 : 0.0 }
+            }).addTo(gursLayer);
+
+            map.fitBounds(geojsonLayer.getBounds(), { maxZoom: 19, padding: [20, 20] });
+
+            try {
+                let center = turf.centerOfMass(parcelFeature);
+                let labelIcon = L.divIcon({ className: 'parcel-label', html: parc, iconSize: [0,0] });
+                L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon: labelIcon, interactive: false}).addTo(labelsLayer);
+            } catch(e) {}
+
+            // 5. KORAK: IZPIS REZULTATOV V LEVI PANEL
+            let resHtml = `<h3 style="color:#2c3e50; border-bottom:2px solid #ecf0f1; padding-bottom:10px;">Rezultati za: KO ${ko}, parc. ${parc}</h3>`;
+            
+            if (actsData.length > 0) {
+                resHtml += `<div class="status-msg status-success">✅ Najdenih gradbenih dovoljenj: ${actsData.length}</div>`;
+                
+                actsData.forEach((a, idx) => {
+                    let stZadeve = varuj(a.stevZad);
+                    let investitor = varuj(a.investitor);
+                    let ccsi = varuj(a.ccsi || a.klasifikacija);
+                    let vrsta = varuj(a.vrstaObjekta || a.nazivObjekta);
+                    let opis = varuj(a.opis || a.opisGradnje);
+                    let organ = varuj(a.nazUprOrg);
+                    
+                    let pzgRaw = a.datumPrijaveZacetkaGradnje || "";
+                    let imaPrijavo = (pzgRaw && !pzgRaw.includes('1900') && pzgRaw !== "0");
+                    let pzgDisplay = imaPrijavo ? `<span style="color:#27ae60;">${formatirajDatum(pzgRaw)} ✅</span>` : `<span style="color:#e74c3c;">❌ Ni prijave</span>`;
+                    
+                    let cardClass = imaPrijavo ? "gd-card has-pzg" : "gd-card";
+                    let link = a.idUa ? `<a href="https://pis.eprostor.gov.si/pis-ua-jv/upravni-akt.html?id=${a.idUa}&lang=sl" target="_blank" class="btn-link">Poglej originalni akt v PIS</a>` : "";
+
+                    resHtml += `
+                    <div class="${cardClass}">
+                        <h4 class="gd-card-title">Akt ${idx+1}: ${stZadeve}</h4>
+                        <table class="data-table">
+                            <tr><th>Upravni organ</th><td>${organ}</td></tr>
+                            <tr><th>Investitor</th><td>${investitor}</td></tr>
+                            <tr><th>CC-SI Klasifikacija</th><td>${ccsi}</td></tr>
+                            <tr><th>Vrsta objekta</th><td>${vrsta}</td></tr>
+                            <tr><th>Kratek opis</th><td>${opis}</td></tr>
+                            <tr><th>Datum izdaje</th><td>${formatirajDatum(a.datIzd)}</td></tr>
+                            <tr><th>Pravnomočnost</th><td>${formatirajDatum(a.maxDatPra)}</td></tr>
+                            <tr><th>Prijava zač. gradnje</th><td style="font-size:14px;">${pzgDisplay}</td></tr>
+                        </table>
+                        ${link}
+                    </div>`;
+                });
+            } else {
+                resHtml += `<div class="status-msg status-error">⚠️ PIS sistem za to parcelo nima evidentiranih gradbenih dovoljenj.</div>`;
+            }
+
+            document.getElementById('results-container').innerHTML = resHtml;
+
+        } catch(e) {
+            console.error(e);
+            pokaziStatus('error', 'Prišlo je do mrežne ali sistemske napake (CORS). Preveri internetno povezavo.');
+        } finally {
+            btn.innerHTML = "🔍 Najdi Parcelo in Akte";
+            btn.disabled = false;
+        }
+    }
 </script>
 </body>
 </html>
